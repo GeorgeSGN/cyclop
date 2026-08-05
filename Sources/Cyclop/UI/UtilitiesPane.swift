@@ -6,11 +6,10 @@ import SwiftUI
 struct UtilitiesPane: View {
     @ObservedObject var lock: KeyboardLock
 
-    /// Why the last press did not lock, if it did not. The system permission
-    /// dialog is never the first thing that happens: being asked for
-    /// Accessibility out of nowhere is indistinguishable from something helping
-    /// itself to the input.
-    @State private var refusal: KeyboardLock.Refusal?
+    /// Read from the lock rather than kept here: one of the reasons — secure
+    /// input coming up mid-wipe — is raised by a timer with no press behind it,
+    /// and a copy in the view would never hear about it.
+    private var refusal: KeyboardLock.Refusal? { lock.lastRefusal }
 
     var body: some View {
         Button {
@@ -46,7 +45,7 @@ struct UtilitiesPane: View {
         .animation(Theme.contentAnimation, value: refusal)
         // Coming back to the tab drops the explanation: the permission may well
         // have been granted in between, and the pane should not still be asking.
-        .onAppear { refusal = nil }
+        .onAppear { lock.clearRefusal() }
     }
 
     private var title: String {
@@ -55,6 +54,7 @@ struct UtilitiesPane: View {
         case .noAccess: return localized("Allow in Settings")
         case .secureInput: return localized("Input is protected")
         case .tapFailed: return localized("Could not take over input")
+        case .busy: return localized("Still unlocking")
         }
     }
 
@@ -68,6 +68,8 @@ struct UtilitiesPane: View {
             return localized("An app is holding secure keyboard entry — a password field,\na password manager, a terminal. Close it and press again")
         case .tapFailed:
             return localized("The system refused the event tap. Re-granting Accessibility\nusually fixes it — the permission is tied to the app's signature")
+        case .busy:
+            return localized("The previous lock is still being taken down.\nPress again in a moment")
         }
     }
 
@@ -75,14 +77,14 @@ struct UtilitiesPane: View {
         // A second press on an explained refusal is the way to Settings: for a
         // missing permission because that is where it is granted, and for a
         // failed tap because a rebuilt app is a new signature to TCC and the
-        // stale entry has to be replaced by hand.
+        // stale entry has to be replaced by hand. The other two reasons pass
+        // through to another attempt — that is what they are waiting for.
         if let refusal, refusal == .noAccess || refusal == .tapFailed {
             lock.openSettings()
             return
         }
 
-        refusal = lock.lock()
         // The system dialog comes with the explanation, not before it.
-        if refusal == .noAccess { lock.requestAccess() }
+        if lock.lock() == .noAccess { lock.requestAccess() }
     }
 }

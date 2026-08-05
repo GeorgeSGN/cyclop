@@ -4,7 +4,10 @@ import AppKit
 ///
 /// A screenshot taken to the clipboard exists only in memory: paste it once and
 /// it is gone. The vault writes it to disk so the shelf can hold on to it.
-/// Nothing here is ever deleted automatically — the folder is the user's.
+///
+/// Files this app wrote are swept after two weeks — see `prune`. Everything else
+/// in the folder is the user's and is never touched automatically: the folder is
+/// shared, not private, and the app sends the user into it from its own menu.
 enum ScreenshotVault {
     /// `~/Pictures/Cyclop` when it can be created — it is findable, and unlike
     /// Desktop or Documents it is not behind a TCC prompt. Falls back to the
@@ -146,9 +149,15 @@ enum ScreenshotVault {
         return removed
     }
 
-    /// To the Trash, not gone. This one is the user's own hand on a menu item,
-    /// and a deliberate press deserves to stay reversible — unlike the sweep
-    /// above, which nobody asked for at the moment it runs.
+    /// Empties the folder — all of it, not only what this app wrote, and to the
+    /// Trash rather than for good.
+    ///
+    /// Wider than `prune` on purpose. A menu item named "clear the folder" that
+    /// left half the folder behind would be the puzzling one, and the marker it
+    /// would have to filter by is invisible, so there would be no way to see why.
+    /// A press is also a decision, which is what earns it the Trash; the sweep
+    /// runs on a schedule nobody asked about, which is why it is narrow and
+    /// final instead.
     static func clear() {
         let fm = FileManager.default
         guard let urls = try? fm.contentsOfDirectory(

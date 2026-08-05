@@ -47,6 +47,8 @@
 "Allow in Settings" = "Allow in Settings";
 "Input is protected" = "Input is protected";
 "Could not take over input" = "Could not take over input";
+"Still unlocking" = "Still unlocking";
+"The previous lock is still being taken down.\nPress again in a moment" = "The previous lock is still being taken down.\nPress again in a moment";
 "An app is holding secure keyboard entry — a password field,\na password manager, a terminal. Close it and press again" = "An app is holding secure keyboard entry — a password field,\na password manager, a terminal. Close it and press again";
 "The system refused the event tap. Re-granting Accessibility\nusually fixes it — the permission is tied to the app's signature" = "The system refused the event tap. Re-granting Accessibility\nusually fixes it — the permission is tied to the app's signature";
 "Cyclop needs Accessibility to swallow keys and clicks.\nSystem Settings → Privacy & Security → Accessibility" = "Cyclop needs Accessibility to swallow keys and clicks.\nSystem Settings → Privacy & Security → Accessibility";

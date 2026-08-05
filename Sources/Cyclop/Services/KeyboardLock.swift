@@ -17,6 +17,13 @@ final class KeyboardLock: ObservableObject {
     @Published private(set) var holdProgress: Double = 0
     /// Seconds before the lock lifts on its own.
     @Published private(set) var secondsLeft = Int(autoRelease)
+    /// Why the last attempt did not lock, or why a lock ended by itself.
+    ///
+    /// Published rather than returned only, because one of the cases has no
+    /// caller to return to: secure input coming up mid-wipe ends the lock from a
+    /// timer, and without this the cover would simply vanish — indistinguishable
+    /// from a crash.
+    @Published private(set) var lastRefusal: Refusal?
 
     /// Never configurable. It is the one way out that does not depend on the
     /// user, the app or the tap still working correctly.
@@ -28,11 +35,16 @@ final class KeyboardLock: ObservableObject {
     /// keyboard hostage.
     static let drainTimeout: TimeInterval = 2
 
-    /// Why a lock was refused, for a caller that has to say something.
+    /// Why a lock was refused, or why one ended before it was asked to.
     enum Refusal {
         case noAccess
         case secureInput
         case tapFailed
+        /// A previous tap is still being taken down. Unreachable by
+        /// construction — a drain is finished before this is checked — and it
+        /// exists so that the impossible case cannot be reported as a permission
+        /// problem, which is what it used to be folded into.
+        case busy
     }
 
     /// Physical keys, matched by code rather than character: a Cyrillic layout
@@ -98,10 +110,10 @@ final class KeyboardLock: ObservableObject {
         // alive, it keeps swallowing everything, and `release` only ever knows
         // about the newest. That is input eaten until the process dies.
         if drainKeyCode != nil { finishDrain() }
-        guard tap == nil else { return .tapFailed }
+        guard tap == nil else { return refuse(.busy) }
 
-        guard hasAccess else { return .noAccess }
-        guard !isSecureInputActive else { return .secureInput }
+        guard hasAccess else { return refuse(.noAccess) }
+        guard !isSecureInputActive else { return refuse(.secureInput) }
 
         // Everything, not a hand-picked list: the point is that nothing gets
         // through, and a list is a promise to have remembered every event type
@@ -118,7 +130,7 @@ final class KeyboardLock: ObservableObject {
                 return MainActor.assumeIsolated { lock.handle(type, event) }
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
-        ) else { return .tapFailed }
+        ) else { return refuse(.tapFailed) }
 
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
@@ -132,9 +144,23 @@ final class KeyboardLock: ObservableObject {
         drainStartedAt = nil
         holdProgress = 0
         secondsLeft = Int(Self.autoRelease)
+        lastRefusal = nil
         isLocked = true
         startTicker()
         return nil
+    }
+
+    /// Records the reason and hands it back, so every refusal is both returned
+    /// to the caller and visible to the pane.
+    private func refuse(_ reason: Refusal) -> Refusal {
+        lastRefusal = reason
+        return reason
+    }
+
+    /// Called by the pane when the tab is entered: a reason shown forever would
+    /// outlive whatever caused it.
+    func clearRefusal() {
+        lastRefusal = nil
     }
 
     func unlock() {
@@ -268,9 +294,11 @@ final class KeyboardLock: ObservableObject {
         // Secure input can go up mid-wipe: a background app raising a password
         // field is enough. From that moment the cover is a lie — keys reach the
         // app in front, not the tap — so the lock ends rather than keeps a
-        // promise it no longer holds.
+        // promise it no longer holds. The reason is recorded, or the cover would
+        // just disappear and read as a crash.
         if isSecureInputActive {
             unlock()
+            lastRefusal = .secureInput
             return
         }
 

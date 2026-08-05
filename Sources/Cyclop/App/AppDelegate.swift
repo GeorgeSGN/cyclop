@@ -97,9 +97,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         openFolder.target = self
         menu.addItem(openFolder)
 
-        // Screenshots accumulate forever by design — nothing in that folder is
-        // deleted behind the user's back. This is the other half of that deal:
-        // one visible, hand-operated way out, with the current size right in
+        // Deliberately wider than the two-week sweep: this one empties the whole
+        // folder, the sweep takes only files this app wrote. That is not an
+        // inconsistency to fix but the difference between a press and a schedule
+        // — an explicit "clear the folder" that left half of it behind would be
+        // the puzzling one, and the Trash keeps it reversible. The size sits in
         // the title so the offer names its price.
         let clearVault = NSMenuItem(
             title: localized("Clear Screenshots Folder"),

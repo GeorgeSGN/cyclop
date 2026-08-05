@@ -28,12 +28,17 @@ final class ShelfStore: ObservableObject {
     @Published private(set) var selection: Set<UUID> = []
 
     private let defaultsKey = "shelf.urls"
-    /// Generous, because saved screenshots accumulate here and nothing is
-    /// deleted behind the user's back. Cards past the limit leave the shelf,
-    /// but their files stay in the folder.
+    /// Generous, because saved screenshots accumulate here. Cards past the limit
+    /// leave the shelf, and their files stay on disk — where, if they are ones
+    /// this app saved, the two-week sweep in `ScreenshotVault` eventually takes
+    /// them. Files dragged onto the shelf from elsewhere are never touched.
     private let limit = 60
     /// Ceiling on the picture data a copy may carry: past it the file still goes
     /// to the pasteboard, just without its bytes read into memory.
+    ///
+    /// Guards one case only — a single very large picture. A multi-card copy
+    /// carries no picture data at all (see `copy(_ urls:)`), so the sixty-card
+    /// selection this once protected against cannot reach here any more.
     private let imageDataBudget = 64 * 1024 * 1024
 
     func load() {
@@ -94,11 +99,19 @@ final class ShelfStore: ObservableObject {
 
     /// Plain click replaces the selection; ⌘ or ⇧ adds to it, matching Finder.
     ///
-    /// Whatever ends up selected also lands on the pasteboard, so that picking a
+    /// The pasteboard then mirrors whatever ended up selected, so that picking a
     /// card is the whole gesture — the shelf exists to hand a file onward, and
     /// ⌘C on top of the click would need the panel to hold the keyboard, which
-    /// dims the window underneath for as long as it does. Deselecting leaves the
-    /// pasteboard alone: putting a card down must not take back what was copied.
+    /// dims the window underneath for as long as it does.
+    ///
+    /// Mirroring, precisely: a ⌘-click that drops one card of three rewrites the
+    /// pasteboard with the remaining two, because a selection on screen that
+    /// disagrees with what would be pasted is worse than either. Only clearing
+    /// the selection entirely leaves the pasteboard as it was — an empty write
+    /// would take back what was copied and hand over nothing.
+    ///
+    /// A double click passes through here first, with `clickCount == 1`, so
+    /// opening a card copies it on the way.
     func select(_ item: ShelfItem, modifiers: NSEvent.ModifierFlags) {
         if modifiers.contains(.command) || modifiers.contains(.shift) {
             if selection.contains(item.id) {
