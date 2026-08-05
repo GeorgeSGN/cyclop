@@ -6,15 +6,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var controller: NotchController?
     private var statusItem: NSStatusItem?
     private var clearVaultItem: NSMenuItem?
+    private var sweepTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         controller = NotchController()
         controller?.install()
         installStatusItem()
+        startSweep()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        sweepTimer?.invalidate()
         controller?.teardown()
+    }
+
+    // MARK: - Screenshot sweep
+
+    /// At launch and once a day after. The daily beat is for the Mac that is
+    /// never restarted — left to launch alone, the sweep on such a machine would
+    /// run once and then never again.
+    private func startSweep() {
+        sweep()
+        let timer = Timer(timeInterval: 24 * 60 * 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.sweep() }
+        }
+        // An hour of slack: nothing here is due at a particular minute, and the
+        // slack lets the system fold this wake-up into others it was making.
+        timer.tolerance = 60 * 60
+        RunLoop.main.add(timer, forMode: .common)
+        sweepTimer = timer
+    }
+
+    private func sweep() {
+        let removed = ScreenshotVault.prune()
+        guard removed > 0 else { return }
+        NSLog("Cyclop: swept \(removed) screenshot(s) older than 14 days")
+        // Cards pointing at the files that just went have to go with them.
+        controller?.reloadShelf()
     }
 
     // MARK: - Menu bar item

@@ -66,9 +66,45 @@ enum ScreenshotVault {
         return (urls.count, bytes)
     }
 
-    /// To the Trash, not gone. The folder's promise is that nothing in it is
-    /// ever deleted behind the user's back; the menu item is the user's own
-    /// hand, and the Trash keeps even that reversible.
+    /// How long a screenshot is kept before the sweep takes it.
+    static let retention: TimeInterval = 14 * 24 * 60 * 60
+
+    /// Deletes screenshots past `retention`, for good rather than to the Trash:
+    /// what lands here is a throwaway copy of something that was on the
+    /// clipboard, and a Trash slowly filling with those is the same problem one
+    /// folder further along. Returns how many went, so the caller can refresh
+    /// the shelf only when something actually changed.
+    ///
+    /// Cards on the shelf are no exception — two weeks means two weeks, or the
+    /// shelf quietly becomes the permanent storage this sweep exists to prevent.
+    /// Files dragged onto the shelf from anywhere else are untouched: only this
+    /// folder is ever swept.
+    static func prune(now: Date = Date()) -> Int {
+        let fm = FileManager.default
+        guard let urls = try? fm.contentsOfDirectory(
+            at: folder,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else { return 0 }
+
+        var removed = 0
+        for url in urls {
+            guard let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate,
+                now.timeIntervalSince(modified) > retention else { continue }
+            do {
+                try fm.removeItem(at: url)
+                removed += 1
+            } catch {
+                NSLog("Cyclop: failed to sweep \(url.lastPathComponent): \(error.localizedDescription)")
+            }
+        }
+        return removed
+    }
+
+    /// To the Trash, not gone. This one is the user's own hand on a menu item,
+    /// and a deliberate press deserves to stay reversible — unlike the sweep
+    /// above, which nobody asked for at the moment it runs.
     static func clear() {
         let fm = FileManager.default
         guard let urls = try? fm.contentsOfDirectory(
