@@ -242,8 +242,6 @@ final class NotchController {
             // through a region the animation has not covered yet.
             applyActiveRect(open: true)
             withAnimation(Theme.openAnimation) { vm.isOpen = true }
-            vm.media.setActive(true)
-            vm.calendar.setActive(true)
         } else {
             // The keyboard goes first and the fold goes second — one run-loop
             // pass apart, never together. Dropped in the same pass, resigning
@@ -266,8 +264,6 @@ final class NotchController {
     private func collapse() {
         guard let vm = viewModel, vm.isOpen else { return }
         withAnimation(Theme.openAnimation) { vm.isOpen = false }
-        vm.media.setActive(false)
-        vm.calendar.setActive(false)
         // Shrink only once the panel has finished collapsing. Doing it
         // while it is still visibly there would leave a window in which
         // clicks land on whatever is behind the panel.

@@ -69,33 +69,16 @@ struct NotchContentView: View {
     @ViewBuilder
     private var trailing: some View {
         switch vm.tab {
-        case .media:
-            HStack(spacing: 6) {
-                if vm.media.track != nil {
-                    EqualizerBars(isAnimating: vm.media.isPlaying)
-                }
-                Text(vm.media.sourceName ?? "")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Theme.tertiary)
-            }
         case .shelf:
             counter(vm.shelf.items.count)
         case .clipboard:
             counter(vm.clipboard.items.count)
         case .snippets:
             counter(vm.snippets.items.count)
-        case .calendar:
-            if let next = vm.calendar.next {
-                Text(CalendarPane.countdown(to: next, from: vm.calendar.now))
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(next.isRunning ? Color.white.opacity(0.8) : Theme.tertiary)
-            }
         case .translate:
             // Nothing: the columns name both languages already, and the strip
             // is the one part of the panel worth not spending on a repeat.
             EmptyView()
-        case .notes:
-            NotesCounter(notes: vm.notes)
         }
     }
 
@@ -112,9 +95,8 @@ struct NotchContentView: View {
 
     private var content: some View {
         HStack(spacing: 14) {
-            Rail(vm: vm, tabs: NotchViewModel.Tab.leftRail)
+            Rail(vm: vm, tabs: NotchViewModel.Tab.rail)
             panes
-            Rail(vm: vm, tabs: NotchViewModel.Tab.rightRail)
         }
         .padding(.horizontal, 14)
         .padding(.bottom, 14)
@@ -143,36 +125,14 @@ struct NotchContentView: View {
     @ViewBuilder
     private var pane: some View {
         switch vm.tab {
-        case .media:
-            MediaPane(media: vm.media)
         case .shelf:
             ShelfPane(shelf: vm.shelf, isTargeted: vm.isDropTargeted)
         case .clipboard:
             ClipboardPane(clipboard: vm.clipboard)
-        case .calendar:
-            CalendarPane(calendar: vm.calendar)
         case .snippets:
             SnippetsPane(snippets: vm.snippets, wantsKeyboard: $vm.wantsKeyboard)
         case .translate:
             TranslatePane(translator: vm.translator, wantsKeyboard: $vm.wantsKeyboard)
-        case .notes:
-            NotesPane(notes: vm.notes, wantsKeyboard: $vm.wantsKeyboard)
-        }
-    }
-}
-
-/// Watches the note store itself rather than reading through the view model:
-/// notes are born and deleted inside the pane while this counter is on
-/// screen, and the view model deliberately does not forward keystroke-driven
-/// stores.
-private struct NotesCounter: View {
-    @ObservedObject var notes: NoteStore
-
-    var body: some View {
-        if !notes.notes.isEmpty {
-            Text("\(notes.notes.count)")
-                .font(.system(size: 10, weight: .medium).monospacedDigit())
-                .foregroundStyle(Theme.tertiary)
         }
     }
 }
@@ -186,7 +146,7 @@ private struct NotesCounter: View {
 /// screen" from "the mouse came to the notch" in `PointerWatcher`.
 private struct Rail: View {
     @ObservedObject var vm: NotchViewModel
-    /// Which icons this rail carries — there are two rails now, one per side.
+    /// Which icons this rail carries.
     let tabs: [NotchViewModel.Tab]
 
     @State private var hovered: NotchViewModel.Tab?
