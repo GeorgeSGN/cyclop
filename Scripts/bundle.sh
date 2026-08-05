@@ -57,8 +57,22 @@ for lproj in "$ROOT"/Resources/*.lproj; do
     echo "    $(basename "$lproj")"
 done
 
-echo "==> ad-hoc signing"
-codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || \
-    echo "    (codesign failed — the app still runs, but TCC prompts may repeat)"
+# Подпись стабильной identity, если она есть. Это не косметика: macOS привязывает
+# выданные разрешения к подписи, а ad-hoc подпись меняется с каждой сборкой —
+# Универсальный доступ, нужный блокировке клавиатуры, приходилось бы выдавать
+# заново после каждой пересборки. Берётся первая доступная codesigning identity;
+# переопределяется через CYCLOP_SIGN_IDENTITY. Без identity остаётся ad-hoc —
+# приложение работает, просто разрешения живут одну сборку.
+IDENTITY="${CYCLOP_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/^[[:space:]]*[0-9]*)[[:space:]]*[0-9A-F]*[[:space:]]*"\(.*\)"$/\1/p' | head -1)}"
+
+if [ -n "$IDENTITY" ]; then
+    echo "==> signing as $IDENTITY"
+    codesign --force --deep --sign "$IDENTITY" "$APP" >/dev/null 2>&1 || \
+        echo "    (codesign failed — the app still runs, but TCC prompts may repeat)"
+else
+    echo "==> ad-hoc signing"
+    codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || \
+        echo "    (codesign failed — the app still runs, but TCC prompts may repeat)"
+fi
 
 echo "==> done: $APP"

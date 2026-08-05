@@ -43,7 +43,7 @@
 
 /* Utilities */
 "Lock Keyboard" = "Lock Keyboard";
-"Wipe the keys and the screen. Hold Esc or − for three\nseconds to unlock; it also unlocks by itself after a minute" = "Wipe the keys and the screen. Hold Esc or − for three\nseconds to unlock; it also unlocks by itself after a minute";
+"Wipe the keys and the screen. Hold Esc or − for %d s to\nunlock; it also unlocks by itself after a minute" = "Wipe the keys and the screen. Hold Esc or − for %d s to\nunlock; it also unlocks by itself after a minute";
 "Allow in Settings" = "Allow in Settings";
 "Input is protected" = "Input is protected";
 "Could not take over input" = "Could not take over input";
@@ -55,7 +55,7 @@
 "The system refused the event tap. Re-granting Accessibility\nusually fixes it — the permission is tied to the app's signature" = "The system refused the event tap. Re-granting Accessibility\nusually fixes it — the permission is tied to the app's signature";
 "Cyclop needs Accessibility to swallow keys and clicks.\nSystem Settings → Privacy & Security → Accessibility" = "Cyclop needs Accessibility to swallow keys and clicks.\nSystem Settings → Privacy & Security → Accessibility";
 "Keyboard and trackpad are locked" = "Keyboard and trackpad are locked";
-"Hold Esc or − for three seconds" = "Hold Esc or − for three seconds";
+"Hold Esc or − for %d s" = "Hold Esc or − for %d s";
 "Unlocks by itself in %d s" = "Unlocks by itself in %d s";
 
 /* Saved screenshots. The key is the date format itself, so a language can put

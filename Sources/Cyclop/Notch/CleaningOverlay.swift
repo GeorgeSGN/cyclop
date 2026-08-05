@@ -106,7 +106,7 @@ private struct CleaningOverlayView: View {
                         .font(.system(size: 17, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.85))
 
-                    Text(localized("Hold Esc or − for three seconds"))
+                    Text(localized("Hold Esc or − for %d s", Int(KeyboardLock.holdToRelease)))
                         .font(.system(size: 13))
                         .foregroundStyle(Color.white.opacity(0.45))
 

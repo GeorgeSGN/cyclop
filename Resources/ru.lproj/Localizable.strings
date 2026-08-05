@@ -42,7 +42,7 @@
 
 /* Утилиты */
 "Lock Keyboard" = "Заблокировать клавиатуру";
-"Wipe the keys and the screen. Hold Esc or − for three\nseconds to unlock; it also unlocks by itself after a minute" = "Протри клавиши и экран. Чтобы разблокировать — держи Esc\nили − три секунды; само снимется через минуту";
+"Wipe the keys and the screen. Hold Esc or − for %d s to\nunlock; it also unlocks by itself after a minute" = "Протри клавиши и экран. Чтобы разблокировать — держи Esc\nили − %d с; само снимется через минуту";
 "Allow in Settings" = "Разрешить в настройках";
 "Input is protected" = "Ввод защищён";
 "Could not take over input" = "Не удалось перехватить ввод";
@@ -54,7 +54,7 @@
 "The system refused the event tap. Re-granting Accessibility\nusually fixes it — the permission is tied to the app's signature" = "Система не дала перехват событий. Обычно помогает выдать\nУниверсальный доступ заново — он привязан к подписи сборки";
 "Cyclop needs Accessibility to swallow keys and clicks.\nSystem Settings → Privacy & Security → Accessibility" = "Нужен Универсальный доступ, чтобы гасить нажатия и клики.\nНастройки → Конфиденциальность → Универсальный доступ";
 "Keyboard and trackpad are locked" = "Клавиатура и трекпад заблокированы";
-"Hold Esc or − for three seconds" = "Держи Esc или − три секунды";
+"Hold Esc or − for %d s" = "Держи Esc или − %d с";
 "Unlocks by itself in %d s" = "Само снимется через %d с";
 
 /* Сохранённые снимки. Ключ — сам формат даты, чтобы язык мог переставить части

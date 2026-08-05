@@ -34,7 +34,9 @@ final class KeyboardLock: ObservableObject {
     /// Never configurable. It is the one way out that does not depend on the
     /// user, the app or the tap still working correctly.
     static let autoRelease: TimeInterval = 60
-    static let holdToRelease: TimeInterval = 3
+    /// Long enough that a cloth cannot do it by accident, short enough to hold
+    /// deliberately. Every text that names it reads it from here.
+    static let holdToRelease: TimeInterval = 2
     /// How long the tap outlives the cover, waiting for the release key to come
     /// up. A ceiling rather than a wait: a key that never reports its release —
     /// stuck, or its keyUp lost with the app that had focus — must not hold the
@@ -185,7 +187,7 @@ final class KeyboardLock: ObservableObject {
     /// Hold satisfied: the cover comes off now, the tap stays a moment longer to
     /// swallow what is left of the held key.
     ///
-    /// Auto-repeat is already in flight by the time three seconds have passed,
+    /// Auto-repeat is already in flight by the time the hold is satisfied,
     /// and the events it produces do not stop with the lock — dropping the tap
     /// here would send the tail of a held `-` into whatever document is in
     /// front. Only key events are swallowed while draining, so the pointer is

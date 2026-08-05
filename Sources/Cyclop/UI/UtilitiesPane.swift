@@ -74,7 +74,10 @@ struct UtilitiesPane: View {
         }
         switch lock.refusal {
         case nil:
-            return localized("Wipe the keys and the screen. Hold Esc or − for three\nseconds to unlock; it also unlocks by itself after a minute")
+            return localized(
+                "Wipe the keys and the screen. Hold Esc or − for %d s to\nunlock; it also unlocks by itself after a minute",
+                Int(KeyboardLock.holdToRelease)
+            )
         case .noAccess:
             return localized("Cyclop needs Accessibility to swallow keys and clicks.\nSystem Settings → Privacy & Security → Accessibility")
         case .secureInput:
