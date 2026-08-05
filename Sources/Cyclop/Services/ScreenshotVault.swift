@@ -69,26 +69,56 @@ enum ScreenshotVault {
     /// How long a screenshot is kept before the sweep takes it.
     static let retention: TimeInterval = 14 * 24 * 60 * 60
 
+    /// Every name `save` may have used, across every language the bundle
+    /// carries. The prefix is localised, and a folder filled in Russian would be
+    /// swept in English against a name that never occurs — so nothing would ever
+    /// go, and the sweep would look like it worked.
+    private static let namePrefixes: Set<String> = {
+        var prefixes: Set<String> = ["Screenshot", localized("Screenshot")]
+        for language in Bundle.main.localizations {
+            guard let path = Bundle.main.path(forResource: language, ofType: "lproj"),
+                  let bundle = Bundle(path: path) else { continue }
+            prefixes.insert(bundle.localizedString(forKey: "Screenshot", value: "Screenshot", table: nil))
+        }
+        return prefixes.filter { !$0.isEmpty }
+    }()
+
+    /// Whether the sweep is allowed to take this file.
+    ///
+    /// The folder is not private: the app sends the user into it from its own
+    /// menu, so an edited screenshot or a folder of exports sitting there is a
+    /// thing that happens, and `removeItem` on a directory takes everything
+    /// inside it. Age alone is not evidence of ownership either — a file copied
+    /// in Finder keeps the modification date it had at the source, so something
+    /// placed here a minute ago can already look two weeks old.
+    private static func isOurs(_ url: URL) -> Bool {
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
+        guard values?.isDirectory != true else { return false }
+        guard url.pathExtension.lowercased() == "png" else { return false }
+        let name = url.deletingPathExtension().lastPathComponent
+        return namePrefixes.contains { name.hasPrefix($0) }
+    }
+
     /// Deletes screenshots past `retention`, for good rather than to the Trash:
     /// what lands here is a throwaway copy of something that was on the
     /// clipboard, and a Trash slowly filling with those is the same problem one
     /// folder further along. Returns how many went, so the caller can refresh
     /// the shelf only when something actually changed.
     ///
-    /// Cards on the shelf are no exception — two weeks means two weeks, or the
+    /// Only files this app wrote are ever taken — see `isOurs`. Cards on the
+    /// shelf are no exception among those: two weeks means two weeks, or the
     /// shelf quietly becomes the permanent storage this sweep exists to prevent.
-    /// Files dragged onto the shelf from anywhere else are untouched: only this
-    /// folder is ever swept.
     static func prune(now: Date = Date()) -> Int {
         let fm = FileManager.default
         guard let urls = try? fm.contentsOfDirectory(
             at: folder,
-            includingPropertiesForKeys: [.contentModificationDateKey],
+            includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey],
             options: [.skipsHiddenFiles]
         ) else { return 0 }
 
         var removed = 0
         for url in urls {
+            guard isOurs(url) else { continue }
             guard let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
                 .contentModificationDate,
                 now.timeIntervalSince(modified) > retention else { continue }

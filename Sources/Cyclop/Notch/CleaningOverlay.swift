@@ -37,7 +37,14 @@ final class CleaningOverlay {
     }
 
     private func build(lock: KeyboardLock) {
-        for screen in NSScreen.screens {
+        let screens = NSScreen.screens
+        // Decided once, before the loop. Asking each screen in turn whether it
+        // holds the pointer *or* happens to be the first one made two screens
+        // answer yes as soon as the pointer was on the second: the message was
+        // then drawn twice, on different displays.
+        let messageIndex = screens.firstIndex { $0.frame.contains(NSEvent.mouseLocation) } ?? 0
+
+        for (index, screen) in screens.enumerated() {
             // Built at zero and framed afterwards, deliberately. The initialiser
             // that takes a `screen:` reads the rect relative to that screen's own
             // lower-left corner, so handing it `screen.frame` — which is already
@@ -62,8 +69,9 @@ final class CleaningOverlay {
 
             // The message goes on the screen the pointer is on, so it is read
             // where the person is looking; the rest stay plain black.
-            let isPrimary = screen.frame.contains(NSEvent.mouseLocation) || screen == NSScreen.screens.first
-            let hosting = NSHostingView(rootView: CleaningOverlayView(lock: lock, showsMessage: isPrimary))
+            let hosting = NSHostingView(
+                rootView: CleaningOverlayView(lock: lock, showsMessage: index == messageIndex)
+            )
             hosting.frame = CGRect(origin: .zero, size: screen.frame.size)
             hosting.autoresizingMask = [.width, .height]
             window.contentView = hosting

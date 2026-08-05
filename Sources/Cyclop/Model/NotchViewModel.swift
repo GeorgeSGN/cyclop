@@ -63,17 +63,24 @@ final class NotchViewModel: ObservableObject {
     let clipboard: ClipboardStore
     let translator: Translator
     let snippets: SnippetStore
+    /// Owned by the controller, not by this model.
+    ///
+    /// Everything else here is panel state, and the model is thrown away and
+    /// rebuilt whenever the display geometry changes — which is fine for a
+    /// selected tab and fatal for a lock: plugging in a monitor mid-wipe used to
+    /// drop the tap and the cover while the cloth was still on the keys. The
+    /// lock outlives rebuilds because it is a system-wide mode, not a view.
     let keyboardLock: KeyboardLock
 
     private var cancellables = Set<AnyCancellable>()
 
-    init(geometry: NotchGeometry) {
+    init(geometry: NotchGeometry, keyboardLock: KeyboardLock) {
         self.geometry = geometry
         self.shelf = ShelfStore()
         self.clipboard = ClipboardStore()
         self.translator = Translator()
         self.snippets = SnippetStore()
-        self.keyboardLock = KeyboardLock()
+        self.keyboardLock = keyboardLock
 
         // The panel header reads through to the stores — the counters. Nested
         // ObservableObjects do not propagate on their own, so those would only
@@ -151,10 +158,11 @@ final class NotchViewModel: ObservableObject {
         clipboard.start()
     }
 
+    /// Called both when quitting and on every rebuild, so it must not touch the
+    /// lock: a rebuild is a new panel, not the end of a wipe. Quitting releases
+    /// it through the controller's teardown instead.
     func stop() {
         clipboard.stop()
-        // Quitting mid-wipe must not leave the tap installed.
-        keyboardLock.unlock()
     }
 
     func accept(urls: [URL]) -> Bool {

@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import Carbon
 
 /// Swallows every input event so the keyboard and trackpad can be wiped.
 ///
@@ -21,6 +22,18 @@ final class KeyboardLock: ObservableObject {
     /// user, the app or the tap still working correctly.
     static let autoRelease: TimeInterval = 60
     static let holdToRelease: TimeInterval = 3
+    /// How long the tap outlives the cover, waiting for the release key to come
+    /// up. A ceiling rather than a wait: a key that never reports its release —
+    /// stuck, or its keyUp lost with the app that had focus — must not hold the
+    /// keyboard hostage.
+    static let drainTimeout: TimeInterval = 2
+
+    /// Why a lock was refused, for a caller that has to say something.
+    enum Refusal {
+        case noAccess
+        case secureInput
+        case tapFailed
+    }
 
     /// Physical keys, matched by code rather than character: a Cyrillic layout
     /// prints something else entirely, and the way out must not depend on which
@@ -35,11 +48,27 @@ final class KeyboardLock: ObservableObject {
     private var ticker: Timer?
     private var lockedAt: Date?
     private var holdStartedAt: Date?
+    /// Which of the two release keys is being held, so the drain knows what to
+    /// wait for.
+    private var heldReleaseKey: Int64?
+    /// Key code the tap is still swallowing after the cover came off, if any.
+    private var drainKeyCode: Int64?
+    private var drainStartedAt: Date?
 
     /// Whether the Accessibility permission is granted. Read every time rather
     /// than cached: it is granted in System Settings, outside this app, and a
     /// cached "no" would outlive the granting by a whole launch.
     var hasAccess: Bool { AXIsProcessTrusted() }
+
+    /// Whether some app is holding secure event input — a password field, a
+    /// password manager, a terminal with secure keyboard entry.
+    ///
+    /// While it is held, keyboard events do not reach an event tap at all; that
+    /// is precisely what the mode is for. The tap would still install and the
+    /// cover would still go up, and every keystroke would land in whatever is in
+    /// front of it. A lock that only looks like one is the failure this class's
+    /// own comment calls worse than having no feature, so it is refused instead.
+    var isSecureInputActive: Bool { IsSecureEventInputEnabled() }
 
     /// Raises the system's own permission dialog. Called from the pane's second
     /// press, after the explanation — the first press is what asks for it.
@@ -57,9 +86,12 @@ final class KeyboardLock: ObservableObject {
 
     // MARK: - Lock
 
+    /// `nil` when the lock is on, otherwise why it is not.
     @discardableResult
-    func lock() -> Bool {
-        guard !isLocked, hasAccess else { return false }
+    func lock() -> Refusal? {
+        guard !isLocked else { return nil }
+        guard hasAccess else { return .noAccess }
+        guard !isSecureInputActive else { return .secureInput }
 
         // Everything, not a hand-picked list: the point is that nothing gets
         // through, and a list is a promise to have remembered every event type
@@ -76,7 +108,7 @@ final class KeyboardLock: ObservableObject {
                 return MainActor.assumeIsolated { lock.handle(type, event) }
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
-        ) else { return false }
+        ) else { return .tapFailed }
 
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
@@ -86,15 +118,46 @@ final class KeyboardLock: ObservableObject {
         self.source = source
         lockedAt = Date()
         holdStartedAt = nil
+        drainKeyCode = nil
+        drainStartedAt = nil
         holdProgress = 0
         secondsLeft = Int(Self.autoRelease)
         isLocked = true
         startTicker()
-        return true
+        return nil
     }
 
     func unlock() {
-        guard isLocked else { return }
+        guard isLocked || drainKeyCode != nil else { return }
+        drainKeyCode = nil
+        drainStartedAt = nil
+        isLocked = false
+        release()
+    }
+
+    /// Hold satisfied: the cover comes off now, the tap stays a moment longer to
+    /// swallow what is left of the held key.
+    ///
+    /// Auto-repeat is already in flight by the time three seconds have passed,
+    /// and the events it produces do not stop with the lock — dropping the tap
+    /// here would send the tail of a held `-` into whatever document is in
+    /// front. Only key events are swallowed while draining, so the pointer is
+    /// live again the moment the screen comes back.
+    private func beginDrain(_ code: Int64) {
+        drainKeyCode = code
+        drainStartedAt = Date()
+        holdStartedAt = nil
+        holdProgress = 0
+        isLocked = false
+    }
+
+    private func finishDrain() {
+        drainKeyCode = nil
+        drainStartedAt = nil
+        release()
+    }
+
+    private func release() {
         ticker?.invalidate()
         ticker = nil
         if let tap {
@@ -107,7 +170,6 @@ final class KeyboardLock: ObservableObject {
         lockedAt = nil
         holdStartedAt = nil
         holdProgress = 0
-        isLocked = false
     }
 
     // MARK: - Events
@@ -123,20 +185,37 @@ final class KeyboardLock: ObservableObject {
         }
 
         let code = event.getIntegerValueField(.keyboardEventKeycode)
+
+        // Draining: the cover is already off, and the only thing still swallowed
+        // is the key that ended the lock, until it comes back up.
+        if let drainKeyCode {
+            let isKeyEvent = type == .keyDown || type == .keyUp || type == .flagsChanged
+            guard isKeyEvent else { return Unmanaged.passUnretained(event) }
+            if type == .keyUp, code == drainKeyCode { finishDrain() }
+            return nil
+        }
+
         let isReleaseKey = code == Key.escape || code == Key.minus
         switch type {
         case .keyDown where isReleaseKey:
             // Auto-repeat fires keyDown over and over while the key is held, so
             // the start is only recorded once — otherwise the hold would reset
             // itself every repeat and never complete.
-            if holdStartedAt == nil { holdStartedAt = Date() }
+            if holdStartedAt == nil {
+                holdStartedAt = Date()
+                heldReleaseKey = code
+            }
         case .keyUp where isReleaseKey:
             holdStartedAt = nil
+            heldReleaseKey = nil
             holdProgress = 0
         case .keyDown, .keyUp:
             // Some other key: an accidental press under the cloth, and the one
-            // in-progress hold it must not credit.
+            // in-progress hold it must not credit. Modifiers arrive as
+            // `.flagsChanged` and deliberately do not reset it — a Shift caught
+            // by the cloth must not cost the way out.
             holdStartedAt = nil
+            heldReleaseKey = nil
             holdProgress = 0
         default:
             break
@@ -153,14 +232,30 @@ final class KeyboardLock: ObservableObject {
     }
 
     private func tick() {
+        // The drain runs after the lock is off, so it is checked first — and it
+        // is the only thing this timer still has to do at that point.
+        if let drainStartedAt {
+            if Date().timeIntervalSince(drainStartedAt) >= Self.drainTimeout { finishDrain() }
+            return
+        }
+
         guard isLocked, let lockedAt else { return }
         let now = Date()
 
-        if let holdStartedAt {
+        // Secure input can go up mid-wipe: a background app raising a password
+        // field is enough. From that moment the cover is a lie — keys reach the
+        // app in front, not the tap — so the lock ends rather than keeps a
+        // promise it no longer holds.
+        if isSecureInputActive {
+            unlock()
+            return
+        }
+
+        if let holdStartedAt, let code = heldReleaseKey {
             let held = now.timeIntervalSince(holdStartedAt)
             holdProgress = min(1, held / Self.holdToRelease)
             if held >= Self.holdToRelease {
-                unlock()
+                beginDrain(code)
                 return
             }
         }

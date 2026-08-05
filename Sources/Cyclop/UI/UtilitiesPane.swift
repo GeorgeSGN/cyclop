@@ -6,21 +6,22 @@ import SwiftUI
 struct UtilitiesPane: View {
     @ObservedObject var lock: KeyboardLock
 
-    /// Raised by a press with no permission granted. The system dialog is never
-    /// the first thing that happens: being asked for Accessibility out of
-    /// nowhere is indistinguishable from something helping itself to the input.
-    @State private var explainsAccess = false
+    /// Why the last press did not lock, if it did not. The system permission
+    /// dialog is never the first thing that happens: being asked for
+    /// Accessibility out of nowhere is indistinguishable from something helping
+    /// itself to the input.
+    @State private var refusal: KeyboardLock.Refusal?
 
     var body: some View {
         Button {
             press()
         } label: {
             VStack(spacing: 8) {
-                Image(systemName: explainsAccess ? "hand.raised.fill" : "keyboard")
+                Image(systemName: refusal == nil ? "keyboard" : "hand.raised.fill")
                     .font(.system(size: 26, weight: .light))
-                    .foregroundStyle(explainsAccess ? Color.white.opacity(0.75) : .white)
+                    .foregroundStyle(refusal == nil ? .white : Color.white.opacity(0.75))
 
-                Text(explainsAccess ? localized("Allow in Settings") : localized("Lock Keyboard"))
+                Text(title)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.white)
 
@@ -42,31 +43,46 @@ struct UtilitiesPane: View {
             .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
-        .animation(Theme.contentAnimation, value: explainsAccess)
+        .animation(Theme.contentAnimation, value: refusal)
         // Coming back to the tab drops the explanation: the permission may well
         // have been granted in between, and the pane should not still be asking.
-        .onAppear { explainsAccess = false }
+        .onAppear { refusal = nil }
+    }
+
+    private var title: String {
+        switch refusal {
+        case nil: return localized("Lock Keyboard")
+        case .noAccess: return localized("Allow in Settings")
+        case .secureInput: return localized("Input is protected")
+        case .tapFailed: return localized("Could not take over input")
+        }
     }
 
     private var caption: String {
-        explainsAccess
-            ? localized("Cyclop needs Accessibility to swallow keys and clicks.\nSystem Settings → Privacy & Security → Accessibility")
-            : localized("Wipe the keys and the screen. Hold Esc or − for three\nseconds to unlock; it also unlocks by itself after a minute")
+        switch refusal {
+        case nil:
+            return localized("Wipe the keys and the screen. Hold Esc or − for three\nseconds to unlock; it also unlocks by itself after a minute")
+        case .noAccess:
+            return localized("Cyclop needs Accessibility to swallow keys and clicks.\nSystem Settings → Privacy & Security → Accessibility")
+        case .secureInput:
+            return localized("An app is holding secure keyboard entry — a password field,\na password manager, a terminal. Close it and press again")
+        case .tapFailed:
+            return localized("The system refused the event tap. Re-granting Accessibility\nusually fixes it — the permission is tied to the app's signature")
+        }
     }
 
     private func press() {
-        guard lock.hasAccess else {
-            // First press explains and asks; a second one, still without the
-            // permission, opens the pane in Settings where it is granted.
-            if explainsAccess {
-                lock.openSettings()
-            } else {
-                explainsAccess = true
-                lock.requestAccess()
-            }
+        // A second press on an explained refusal is the way to Settings: for a
+        // missing permission because that is where it is granted, and for a
+        // failed tap because a rebuilt app is a new signature to TCC and the
+        // stale entry has to be replaced by hand.
+        if let refusal, refusal == .noAccess || refusal == .tapFailed {
+            lock.openSettings()
             return
         }
-        explainsAccess = false
-        lock.lock()
+
+        refusal = lock.lock()
+        // The system dialog comes with the explanation, not before it.
+        if refusal == .noAccess { lock.requestAccess() }
     }
 }
