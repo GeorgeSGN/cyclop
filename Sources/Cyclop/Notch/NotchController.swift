@@ -236,7 +236,11 @@ final class NotchController {
 
         // A rebuilt panel starts closed. If the pointer is already sitting on
         // it, reopen at once instead of waiting for a trip back to the notch.
-        if geometry.expandedHoverRect.contains(NSEvent.mouseLocation) {
+        //
+        // Never while locked: the subscription above has just stopped pointer
+        // tracking, so a panel opened here would stand expanded under the black
+        // cover until the first sample after unlocking.
+        if !keyboardLock.isLocked, geometry.expandedHoverRect.contains(NSEvent.mouseLocation) {
             pointer.setInside(true)
             setOpen(true)
         }

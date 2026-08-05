@@ -90,6 +90,16 @@ final class KeyboardLock: ObservableObject {
     @discardableResult
     func lock() -> Refusal? {
         guard !isLocked else { return nil }
+
+        // A drain still owns a tap, and `isLocked` is already false by then, so
+        // it is not what the guard below can rely on: the meaningful state is
+        // whether a tap is installed, not whether the cover is up. Installing a
+        // second one would orphan the first — the run loop source keeps it
+        // alive, it keeps swallowing everything, and `release` only ever knows
+        // about the newest. That is input eaten until the process dies.
+        if drainKeyCode != nil { finishDrain() }
+        guard tap == nil else { return .tapFailed }
+
         guard hasAccess else { return .noAccess }
         guard !isSecureInputActive else { return .secureInput }
 
@@ -151,7 +161,10 @@ final class KeyboardLock: ObservableObject {
         isLocked = false
     }
 
+    /// Idempotent: the timeout in `tick` and the deferred call from the callback
+    /// can both arrive, and the second one must find nothing left to do.
     private func finishDrain() {
+        guard drainStartedAt != nil else { return }
         drainKeyCode = nil
         drainStartedAt = nil
         release()
@@ -191,7 +204,15 @@ final class KeyboardLock: ObservableObject {
         if let drainKeyCode {
             let isKeyEvent = type == .keyDown || type == .keyUp || type == .flagsChanged
             guard isKeyEvent else { return Unmanaged.passUnretained(event) }
-            if type == .keyUp, code == drainKeyCode { finishDrain() }
+            if type == .keyUp, code == drainKeyCode {
+                // Off the callback, deliberately. Tearing the mach port down
+                // from inside its own callback — and then still returning to the
+                // tap machinery — is probably safe, since the run loop holds the
+                // source for the duration, but this is the ordinary way out of
+                // the lock and it should not rest on "probably". One extra pass
+                // of the run loop costs nothing here.
+                DispatchQueue.main.async { [weak self] in self?.finishDrain() }
+            }
             return nil
         }
 
@@ -224,6 +245,8 @@ final class KeyboardLock: ObservableObject {
     }
 
     private func startTicker() {
+        // Never two of them: a second timer would tick forever, unreferenced.
+        ticker?.invalidate()
         let timer = Timer(timeInterval: 1.0 / 20, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
