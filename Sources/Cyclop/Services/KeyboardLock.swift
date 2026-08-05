@@ -17,13 +17,19 @@ final class KeyboardLock: ObservableObject {
     @Published private(set) var holdProgress: Double = 0
     /// Seconds before the lock lifts on its own.
     @Published private(set) var secondsLeft = Int(autoRelease)
-    /// Why the last attempt did not lock, or why a lock ended by itself.
+    /// Why the last attempt to lock was refused. Dropped when the tab is
+    /// entered: the permission may well have been granted in between, and a pane
+    /// still asking for it would be wrong.
+    @Published private(set) var refusal: Refusal?
+
+    /// Why a lock ended by itself, with no press behind it.
     ///
-    /// Published rather than returned only, because one of the cases has no
-    /// caller to return to: secure input coming up mid-wipe ends the lock from a
-    /// timer, and without this the cover would simply vanish — indistinguishable
-    /// from a crash.
-    @Published private(set) var lastRefusal: Refusal?
+    /// Kept apart from `refusal` because the two have opposite lifetimes, and one
+    /// setter cannot serve both. The panel is folded whenever the lock is on, so
+    /// by the time this is written the pane does not exist; entering the tab is
+    /// when it gets read, which is exactly when `refusal` has to be dropped.
+    /// Cleared by the next press instead.
+    @Published private(set) var interruption: Refusal?
 
     /// Never configurable. It is the one way out that does not depend on the
     /// user, the app or the tap still working correctly.
@@ -103,6 +109,10 @@ final class KeyboardLock: ObservableObject {
     func lock() -> Refusal? {
         guard !isLocked else { return nil }
 
+        // A press is the answer to whatever ended the last lock, so the
+        // explanation for it has been read and can go.
+        interruption = nil
+
         // A drain still owns a tap, and `isLocked` is already false by then, so
         // it is not what the guard below can rely on: the meaningful state is
         // whether a tap is installed, not whether the cover is up. Installing a
@@ -144,7 +154,7 @@ final class KeyboardLock: ObservableObject {
         drainStartedAt = nil
         holdProgress = 0
         secondsLeft = Int(Self.autoRelease)
-        lastRefusal = nil
+        refusal = nil
         isLocked = true
         startTicker()
         return nil
@@ -153,14 +163,15 @@ final class KeyboardLock: ObservableObject {
     /// Records the reason and hands it back, so every refusal is both returned
     /// to the caller and visible to the pane.
     private func refuse(_ reason: Refusal) -> Refusal {
-        lastRefusal = reason
+        refusal = reason
         return reason
     }
 
-    /// Called by the pane when the tab is entered: a reason shown forever would
-    /// outlive whatever caused it.
+    /// Called by the pane when the tab is entered. Drops only the press-time
+    /// reason: `interruption` is what the pane came to show, and clearing it here
+    /// would erase it one frame after it appeared.
     func clearRefusal() {
-        lastRefusal = nil
+        refusal = nil
     }
 
     func unlock() {
@@ -298,7 +309,7 @@ final class KeyboardLock: ObservableObject {
         // just disappear and read as a crash.
         if isSecureInputActive {
             unlock()
-            lastRefusal = .secureInput
+            interruption = .secureInput
             return
         }
 

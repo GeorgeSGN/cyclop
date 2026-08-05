@@ -9,16 +9,20 @@ struct UtilitiesPane: View {
     /// Read from the lock rather than kept here: one of the reasons — secure
     /// input coming up mid-wipe — is raised by a timer with no press behind it,
     /// and a copy in the view would never hear about it.
-    private var refusal: KeyboardLock.Refusal? { lock.lastRefusal }
+    ///
+    /// An interruption wins: it describes a lock that was running a moment ago,
+    /// which is newer news than why an earlier press did not start one.
+    private var reason: KeyboardLock.Refusal? { lock.interruption ?? lock.refusal }
+    private var wasInterrupted: Bool { lock.interruption != nil }
 
     var body: some View {
         Button {
             press()
         } label: {
             VStack(spacing: 8) {
-                Image(systemName: refusal == nil ? "keyboard" : "hand.raised.fill")
+                Image(systemName: reason == nil ? "keyboard" : "hand.raised.fill")
                     .font(.system(size: 26, weight: .light))
-                    .foregroundStyle(refusal == nil ? .white : Color.white.opacity(0.75))
+                    .foregroundStyle(reason == nil ? .white : Color.white.opacity(0.75))
 
                 Text(title)
                     .font(.system(size: 13, weight: .medium))
@@ -42,14 +46,18 @@ struct UtilitiesPane: View {
             .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
-        .animation(Theme.contentAnimation, value: refusal)
-        // Coming back to the tab drops the explanation: the permission may well
-        // have been granted in between, and the pane should not still be asking.
+        .animation(Theme.contentAnimation, value: reason)
+        // Drops the press-time reason only: the permission may well have been
+        // granted in between, and the pane should not still be asking. What the
+        // pane came here to show — why a running lock ended — survives, because
+        // the panel is folded at the moment that is written and this return is
+        // the first chance to read it.
         .onAppear { lock.clearRefusal() }
     }
 
     private var title: String {
-        switch refusal {
+        if wasInterrupted { return localized("Lock ended early") }
+        switch lock.refusal {
         case nil: return localized("Lock Keyboard")
         case .noAccess: return localized("Allow in Settings")
         case .secureInput: return localized("Input is protected")
@@ -59,7 +67,12 @@ struct UtilitiesPane: View {
     }
 
     private var caption: String {
-        switch refusal {
+        // A lock that ended is a different message from one that never started:
+        // nothing is being asked of the user, something is being reported.
+        if wasInterrupted {
+            return localized("An app turned on secure keyboard entry, so keys stopped\nreaching the lock. It ended instead of pretending")
+        }
+        switch lock.refusal {
         case nil:
             return localized("Wipe the keys and the screen. Hold Esc or − for three\nseconds to unlock; it also unlocks by itself after a minute")
         case .noAccess:
@@ -79,7 +92,7 @@ struct UtilitiesPane: View {
         // failed tap because a rebuilt app is a new signature to TCC and the
         // stale entry has to be replaced by hand. The other two reasons pass
         // through to another attempt — that is what they are waiting for.
-        if let refusal, refusal == .noAccess || refusal == .tapFailed {
+        if let reason, reason == .noAccess || reason == .tapFailed {
             lock.openSettings()
             return
         }
