@@ -22,14 +22,31 @@ final class KeyboardLock: ObservableObject {
     /// still asking for it would be wrong.
     @Published private(set) var refusal: Refusal?
 
-    /// Why a lock ended by itself, with no press behind it.
+    /// Why a lock ended by itself, with no press behind it — and when.
     ///
     /// Kept apart from `refusal` because the two have opposite lifetimes, and one
     /// setter cannot serve both. The panel is folded whenever the lock is on, so
     /// by the time this is written the pane does not exist; entering the tab is
     /// when it gets read, which is exactly when `refusal` has to be dropped.
-    /// Cleared by the next press instead.
-    @Published private(set) var interruption: Refusal?
+    @Published private var lastInterruption: (reason: Refusal, at: Date)?
+
+    /// The interruption while it is still news. Goes stale on its own, because
+    /// this describes an event, and a sentence about an event left on screen long
+    /// enough starts reading as a description of the present — "it is broken now"
+    /// instead of "it stopped a moment ago". Also dropped by the next press,
+    /// which answers it.
+    ///
+    /// A minute comes from that reading, not from any mechanism: there is no
+    /// technical moment at which the reason expires, only a point past which it
+    /// misinforms.
+    var interruption: Refusal? {
+        guard let lastInterruption,
+              Date().timeIntervalSince(lastInterruption.at) < Self.interruptionShelfLife
+        else { return nil }
+        return lastInterruption.reason
+    }
+
+    static let interruptionShelfLife: TimeInterval = 60
 
     /// Never configurable. It is the one way out that does not depend on the
     /// user, the app or the tap still working correctly.
@@ -113,7 +130,7 @@ final class KeyboardLock: ObservableObject {
 
         // A press is the answer to whatever ended the last lock, so the
         // explanation for it has been read and can go.
-        interruption = nil
+        lastInterruption = nil
 
         // A drain still owns a tap, and `isLocked` is already false by then, so
         // it is not what the guard below can rely on: the meaningful state is
@@ -311,7 +328,7 @@ final class KeyboardLock: ObservableObject {
         // just disappear and read as a crash.
         if isSecureInputActive {
             unlock()
-            interruption = .secureInput
+            lastInterruption = (.secureInput, now)
             return
         }
 
