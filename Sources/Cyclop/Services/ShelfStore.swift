@@ -32,6 +32,9 @@ final class ShelfStore: ObservableObject {
     /// deleted behind the user's back. Cards past the limit leave the shelf,
     /// but their files stay in the folder.
     private let limit = 60
+    /// Ceiling on the picture data a copy may carry: past it the file still goes
+    /// to the pasteboard, just without its bytes read into memory.
+    private let imageDataBudget = 64 * 1024 * 1024
 
     func load() {
         let paths = UserDefaults.standard.stringArray(forKey: defaultsKey) ?? []
@@ -138,21 +141,50 @@ final class ShelfStore: ObservableObject {
         copy(items.filter { selection.contains($0.id) }.map(\.url))
     }
 
+    /// One pasteboard item per file, each carrying the file reference, plus the
+    /// paths as plain text.
+    ///
+    /// Picture bytes go along only when a single card was copied. A reader that
+    /// finds an image in the pasteboard takes it and looks no further — Claude
+    /// Code in a terminal does exactly that — so attaching a picture to a copy of
+    /// several files is what turns "four screenshots" into "the first
+    /// screenshot". Left without one, the same reader falls through to the text
+    /// below and gets every path; whoever enumerates the items, like Finder or a
+    /// messenger, was taking all the files either way.
     private func copy(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
+        let carriesPicture = urls.count == 1
+        let items = urls.map { url -> NSPasteboardItem in
+            let item = NSPasteboardItem()
+            item.setString(url.absoluteString, forType: .fileURL)
+            if carriesPicture, let picture = image(of: url) {
+                item.setData(picture.data, forType: picture.type)
+            }
+            return item
+        }
+
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        // Tells ClipboardStore this change came from us, so a copied screenshot
-        // is not saved to disk a second time.
+        pasteboard.writeObjects(items)
+        // Both land on the first item, which is why they are set after the write.
+        // The marker tells ClipboardStore the change came from us, so a copied
+        // screenshot is not saved to disk a second time.
         pasteboard.setData(Data(), forType: .cyclopInternal)
-        pasteboard.writeObjects(urls.map { $0 as NSURL })
-        // Image data is for the single-file case: several pictures at once have
-        // no one representation, and the file references already carry them all.
-        guard urls.count == 1, let url = urls.first,
-              let type = UTType(filenameExtension: url.pathExtension),
+        pasteboard.setString(urls.map(\.path).joined(separator: "\n"), forType: .string)
+    }
+
+    /// Image bytes for the pasteboard, or nothing when the file is not a picture
+    /// or is too big to be worth carrying.
+    private func image(of url: URL) -> (data: Data, type: NSPasteboard.PasteboardType)? {
+        guard let type = UTType(filenameExtension: url.pathExtension),
               type.conforms(to: .image),
-              let data = try? Data(contentsOf: url) else { return }
-        pasteboard.setData(data, forType: type == .png ? .png : .tiff)
+              let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+              size <= imageDataBudget else { return nil }
+        // PNG goes as itself; anything else is re-encoded, because handing JPEG
+        // bytes over under the TIFF type is a picture nobody can decode.
+        if type == .png, let data = try? Data(contentsOf: url) { return (data, .png) }
+        guard let tiff = NSImage(contentsOf: url)?.tiffRepresentation else { return nil }
+        return (tiff, .tiff)
     }
 
     func open(_ item: ShelfItem) {
