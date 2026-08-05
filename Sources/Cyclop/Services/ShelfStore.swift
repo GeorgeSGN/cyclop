@@ -90,6 +90,12 @@ final class ShelfStore: ObservableObject {
     // MARK: - Selection
 
     /// Plain click replaces the selection; ⌘ or ⇧ adds to it, matching Finder.
+    ///
+    /// Whatever ends up selected also lands on the pasteboard, so that picking a
+    /// card is the whole gesture — the shelf exists to hand a file onward, and
+    /// ⌘C on top of the click would need the panel to hold the keyboard, which
+    /// dims the window underneath for as long as it does. Deselecting leaves the
+    /// pasteboard alone: putting a card down must not take back what was copied.
     func select(_ item: ShelfItem, modifiers: NSEvent.ModifierFlags) {
         if modifiers.contains(.command) || modifiers.contains(.shift) {
             if selection.contains(item.id) {
@@ -102,6 +108,7 @@ final class ShelfStore: ObservableObject {
         } else {
             selection = [item.id]
         }
+        copySelection()
     }
 
     func isSelected(_ item: ShelfItem) -> Bool { selection.contains(item.id) }
@@ -122,17 +129,30 @@ final class ShelfStore: ObservableObject {
     /// Puts the card back on the pasteboard. Images go as image data as well as
     /// a file reference, so pasting works both in Finder and in an editor.
     func copy(_ item: ShelfItem) {
+        copy([item.url])
+    }
+
+    /// The current selection, as one pasteboard write. Empty does nothing at
+    /// all — an empty write would clear whatever the pasteboard already held.
+    func copySelection() {
+        copy(items.filter { selection.contains($0.id) }.map(\.url))
+    }
+
+    private func copy(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         // Tells ClipboardStore this change came from us, so a copied screenshot
         // is not saved to disk a second time.
         pasteboard.setData(Data(), forType: .cyclopInternal)
-        pasteboard.writeObjects([item.url as NSURL])
-        if let type = UTType(filenameExtension: item.url.pathExtension),
-           type.conforms(to: .image),
-           let data = try? Data(contentsOf: item.url) {
-            pasteboard.setData(data, forType: type == .png ? .png : .tiff)
-        }
+        pasteboard.writeObjects(urls.map { $0 as NSURL })
+        // Image data is for the single-file case: several pictures at once have
+        // no one representation, and the file references already carry them all.
+        guard urls.count == 1, let url = urls.first,
+              let type = UTType(filenameExtension: url.pathExtension),
+              type.conforms(to: .image),
+              let data = try? Data(contentsOf: url) else { return }
+        pasteboard.setData(data, forType: type == .png ? .png : .tiff)
     }
 
     func open(_ item: ShelfItem) {
