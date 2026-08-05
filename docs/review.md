@@ -41,7 +41,7 @@ git log --oneline upstream/main..HEAD  # актуальный список ко�
 Строка «текущий» здесь была бы неверной с первого же следующего коммита.
 
 Объём **по коду** (`Sources`, `Scripts`, `Resources`, `Package.swift`):
-**+883 строки, −2134**.
+**+904 строки, −2136**.
 
 ```bash
 git diff --shortstat upstream/main -- Sources Scripts Resources Package.swift
