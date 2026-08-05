@@ -7,6 +7,7 @@
 "Clipboard" = "Clipboard";
 "Snippets" = "Snippets";
 "Translate" = "Translate";
+"Utilities" = "Utilities";
 
 /* Menu bar */
 "Open Panel" = "Open Panel";
@@ -39,6 +40,15 @@
 "Retry" = "Retry";
 "The %@ → %@ language pack is not installed." = "The %@ → %@ language pack is not installed.";
 "macOS does not translate this pair of languages." = "macOS does not translate this pair of languages.";
+
+/* Utilities */
+"Lock Keyboard" = "Lock Keyboard";
+"Wipe the keys and the screen. Hold Esc or − for three\nseconds to unlock; it also unlocks by itself after a minute" = "Wipe the keys and the screen. Hold Esc or − for three\nseconds to unlock; it also unlocks by itself after a minute";
+"Allow in Settings" = "Allow in Settings";
+"Cyclop needs Accessibility to swallow keys and clicks.\nSystem Settings → Privacy & Security → Accessibility" = "Cyclop needs Accessibility to swallow keys and clicks.\nSystem Settings → Privacy & Security → Accessibility";
+"Keyboard and trackpad are locked" = "Keyboard and trackpad are locked";
+"Hold Esc or − for three seconds" = "Hold Esc or − for three seconds";
+"Unlocks by itself in %d s" = "Unlocks by itself in %d s";
 
 /* Saved screenshots. The key is the date format itself, so a language can put
    the parts in its own order. */

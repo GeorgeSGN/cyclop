@@ -6,6 +6,7 @@
 "Clipboard" = "Буфер";
 "Snippets" = "Заготовки";
 "Translate" = "Перевод";
+"Utilities" = "Утилиты";
 
 /* Меню-бар */
 "Open Panel" = "Открыть панель";
@@ -38,6 +39,15 @@
 "Retry" = "Повторить";
 "The %@ → %@ language pack is not installed." = "Не скачан языковой пакет %@ → %@.";
 "macOS does not translate this pair of languages." = "macOS не переводит эту пару языков.";
+
+/* Утилиты */
+"Lock Keyboard" = "Заблокировать клавиатуру";
+"Wipe the keys and the screen. Hold Esc or − for three\nseconds to unlock; it also unlocks by itself after a minute" = "Протри клавиши и экран. Чтобы разблокировать — держи Esc\nили − три секунды; само снимется через минуту";
+"Allow in Settings" = "Разрешить в настройках";
+"Cyclop needs Accessibility to swallow keys and clicks.\nSystem Settings → Privacy & Security → Accessibility" = "Нужен Универсальный доступ, чтобы гасить нажатия и клики.\nНастройки → Конфиденциальность → Универсальный доступ";
+"Keyboard and trackpad are locked" = "Клавиатура и трекпад заблокированы";
+"Hold Esc or − for three seconds" = "Держи Esc или − три секунды";
+"Unlocks by itself in %d s" = "Само снимется через %d с";
 
 /* Сохранённые снимки. Ключ — сам формат даты, чтобы язык мог переставить части
    в своём порядке. */

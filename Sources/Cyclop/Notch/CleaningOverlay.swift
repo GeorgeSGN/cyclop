@@ -1,0 +1,123 @@
+import AppKit
+import SwiftUI
+
+/// Black cover over every display for as long as the input is locked.
+///
+/// It earns its place twice: it is the only proof the lock is on — a locked Mac
+/// that looks ordinary is indistinguishable from a frozen one — and a black
+/// screen is what shows the smudges, so the display gets wiped in the same pass
+/// as the keys.
+@MainActor
+final class CleaningOverlay {
+    private var windows: [NSWindow] = []
+    private var observer: Any?
+
+    func show(lock: KeyboardLock) {
+        guard windows.isEmpty else { return }
+        build(lock: lock)
+        // Plugging in a display mid-wipe would otherwise leave it uncovered, and
+        // an uncovered display is a Mac that looks unlocked while it is not.
+        observer = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.windows.isEmpty else { return }
+                self.teardown()
+                self.build(lock: lock)
+            }
+        }
+    }
+
+    func hide() {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+        observer = nil
+        teardown()
+    }
+
+    private func build(lock: KeyboardLock) {
+        for screen in NSScreen.screens {
+            let window = NSWindow(
+                contentRect: screen.frame,
+                styleMask: [.borderless],
+                backing: .buffered,
+                defer: false,
+                screen: screen
+            )
+            window.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
+            window.backgroundColor = .black
+            window.isOpaque = true
+            window.hasShadow = false
+            window.ignoresMouseEvents = true
+            window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
+            window.appearance = NSAppearance(named: .darkAqua)
+            window.animationBehavior = .none
+
+            // The message goes on the screen the pointer is on, so it is read
+            // where the person is looking; the rest stay plain black.
+            let isPrimary = screen.frame.contains(NSEvent.mouseLocation) || screen == NSScreen.screens.first
+            let hosting = NSHostingView(rootView: CleaningOverlayView(lock: lock, showsMessage: isPrimary))
+            hosting.frame = CGRect(origin: .zero, size: screen.frame.size)
+            hosting.autoresizingMask = [.width, .height]
+            window.contentView = hosting
+            window.orderFrontRegardless()
+            windows.append(window)
+        }
+    }
+
+    private func teardown() {
+        for window in windows {
+            window.contentView = nil
+            window.orderOut(nil)
+        }
+        windows.removeAll()
+    }
+}
+
+private struct CleaningOverlayView: View {
+    @ObservedObject var lock: KeyboardLock
+    let showsMessage: Bool
+
+    var body: some View {
+        ZStack {
+            Color.black
+            if showsMessage {
+                VStack(spacing: 18) {
+                    Image(systemName: "keyboard")
+                        .font(.system(size: 34, weight: .thin))
+                        .foregroundStyle(Color.white.opacity(0.55))
+
+                    Text(localized("Keyboard and trackpad are locked"))
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.85))
+
+                    Text(localized("Hold Esc or − for three seconds"))
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.white.opacity(0.45))
+
+                    hold
+
+                    Text(localized("Unlocks by itself in %d s", lock.secondsLeft))
+                        .font(.system(size: 11).monospacedDigit())
+                        .foregroundStyle(Color.white.opacity(0.3))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Shows the hold as it accumulates: without it a three-second press is
+    /// indistinguishable from a lock that stopped answering.
+    private var hold: some View {
+        ZStack(alignment: .leading) {
+            Capsule()
+                .fill(Color.white.opacity(0.12))
+            Capsule()
+                .fill(Color.white.opacity(0.7))
+                .frame(width: 180 * lock.holdProgress)
+        }
+        .frame(width: 180, height: 4)
+        .animation(.linear(duration: 1.0 / 20), value: lock.holdProgress)
+    }
+}

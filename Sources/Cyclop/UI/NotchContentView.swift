@@ -79,6 +79,8 @@ struct NotchContentView: View {
             // Nothing: the columns name both languages already, and the strip
             // is the one part of the panel worth not spending on a repeat.
             EmptyView()
+        case .utilities:
+            EmptyView()
         }
     }
 
@@ -133,6 +135,8 @@ struct NotchContentView: View {
             SnippetsPane(snippets: vm.snippets, wantsKeyboard: $vm.wantsKeyboard)
         case .translate:
             TranslatePane(translator: vm.translator, wantsKeyboard: $vm.wantsKeyboard)
+        case .utilities:
+            UtilitiesPane(lock: vm.keyboardLock)
         }
     }
 }

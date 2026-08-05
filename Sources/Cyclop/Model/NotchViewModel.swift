@@ -4,7 +4,7 @@ import Combine
 @MainActor
 final class NotchViewModel: ObservableObject {
     enum Tab: String, CaseIterable, Identifiable {
-        case shelf, clipboard, snippets, translate
+        case shelf, clipboard, snippets, translate, utilities
         var id: String { rawValue }
 
         var symbol: String {
@@ -13,6 +13,7 @@ final class NotchViewModel: ObservableObject {
             case .clipboard: return "list.clipboard.fill"
             case .snippets: return "pin.fill"
             case .translate: return "translate"
+            case .utilities: return "wrench.and.screwdriver.fill"
             }
         }
 
@@ -22,6 +23,7 @@ final class NotchViewModel: ObservableObject {
             case .clipboard: return localized("Clipboard")
             case .snippets: return localized("Snippets")
             case .translate: return localized("Translate")
+            case .utilities: return localized("Utilities")
             }
         }
 
@@ -29,9 +31,9 @@ final class NotchViewModel: ObservableObject {
         /// that arriving and typing is a single move.
         var needsKeyboard: Bool { self == .translate || self == .snippets }
 
-        /// Icons the rail carries, in order. Four fit the panel height with
-        /// room to spare — the upstream app needed a second rail on the right
-        /// only because it carried seven.
+        /// Icons the rail carries, in order. Five fit the panel height with room
+        /// to spare — the upstream app needed a second rail on the right only
+        /// because it carried seven.
         static let rail: [Tab] = allCases
     }
 
@@ -61,6 +63,7 @@ final class NotchViewModel: ObservableObject {
     let clipboard: ClipboardStore
     let translator: Translator
     let snippets: SnippetStore
+    let keyboardLock: KeyboardLock
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -70,6 +73,7 @@ final class NotchViewModel: ObservableObject {
         self.clipboard = ClipboardStore()
         self.translator = Translator()
         self.snippets = SnippetStore()
+        self.keyboardLock = KeyboardLock()
 
         // The panel header reads through to the stores — the counters. Nested
         // ObservableObjects do not propagate on their own, so those would only
@@ -149,6 +153,8 @@ final class NotchViewModel: ObservableObject {
 
     func stop() {
         clipboard.stop()
+        // Quitting mid-wipe must not leave the tap installed.
+        keyboardLock.unlock()
     }
 
     func accept(urls: [URL]) -> Bool {
