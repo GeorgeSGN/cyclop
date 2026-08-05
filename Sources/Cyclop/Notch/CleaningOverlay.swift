@@ -38,13 +38,19 @@ final class CleaningOverlay {
 
     private func build(lock: KeyboardLock) {
         for screen in NSScreen.screens {
+            // Built at zero and framed afterwards, deliberately. The initialiser
+            // that takes a `screen:` reads the rect relative to that screen's own
+            // lower-left corner, so handing it `screen.frame` — which is already
+            // global — adds the origin to itself: a second display at x=1728 got
+            // a cover at x=3456, hanging off the side and leaving most of the
+            // screen bare. `setFrame` is global and needs no such translation.
             let window = NSWindow(
-                contentRect: screen.frame,
+                contentRect: .zero,
                 styleMask: [.borderless],
                 backing: .buffered,
-                defer: false,
-                screen: screen
+                defer: false
             )
+            window.setFrame(screen.frame, display: false)
             window.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
             window.backgroundColor = .black
             window.isOpaque = true
