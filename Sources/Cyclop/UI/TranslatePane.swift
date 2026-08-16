@@ -63,6 +63,7 @@ struct TranslatePane: View {
                         .foregroundStyle(Theme.secondary)
                 }
                 .buttonStyle(.plain)
+                .pointerStyle(.default)
             }
         } content: {
             // A `TextField(axis: .vertical)` grows to fit its text, and growing
@@ -114,6 +115,7 @@ struct TranslatePane: View {
                         .foregroundStyle(copied ? Color.green : Theme.secondary)
                 }
                 .buttonStyle(.plain)
+                .pointerStyle(.default)
             }
         } content: {
             outcome(font)
@@ -137,6 +139,7 @@ struct TranslatePane: View {
                     Button("Retry") { translator.retry() }
                 }
                 .buttonStyle(.plain)
+                .pointerStyle(.default)
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.white)
             }

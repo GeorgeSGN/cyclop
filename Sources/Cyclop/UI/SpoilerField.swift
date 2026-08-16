@@ -177,6 +177,11 @@ struct PrivacySwitch: View {
                 .foregroundStyle(covering ? Color.white.opacity(0.8) : Theme.secondary)
         }
         .buttonStyle(.plain)
+        // Said outright, because the field next to it says otherwise: a focused
+        // text field owns the I-beam over its own area, and a plain button has
+        // no pointer of its own to replace it with — so the caret stayed while
+        // hovering something clickable.
+        .pointerStyle(.default)
         .help(covering ? localized("Show") : localized("Hide"))
     }
 }
