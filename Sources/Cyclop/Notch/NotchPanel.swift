@@ -12,17 +12,29 @@ final class NotchPanel: NSPanel {
     var acceptsKeyboard = false {
         didSet {
             guard acceptsKeyboard != oldValue else { return }
-            if acceptsKeyboard {
-                makeKey()
-            } else if isKeyWindow {
-                // There is no supported way to simply hand key status back, and
-                // this app owns no other window to pass it to. Ordering out and
-                // straight back in resigns it; the panel is borderless and the
-                // round trip happens within one pass, so nothing flickers.
-                orderOut(nil)
-                orderFrontRegardless()
-            }
+            if acceptsKeyboard { makeKey() }
+            // Giving it back is `releaseKey`, called separately — the moment it
+            // happens matters, and only the controller knows when it is safe.
         }
+    }
+
+    /// Hands the key status back.
+    ///
+    /// There is no supported way to simply give it up, and this app owns no
+    /// other window to pass it to. Ordering out and straight back in resigns it;
+    /// the panel is borderless and the round trip happens within one pass, so
+    /// nothing flickers.
+    ///
+    /// Deliberately not done from `acceptsKeyboard`. That round trip pulls the
+    /// window out from under whatever is drawing into it, and when it landed
+    /// *before* the fold, the fold's animation lost its repaint: the panel stayed
+    /// on screen fully expanded with the state already closed, ignoring the
+    /// pointer, and swallowing nothing — clicks went to the app underneath while
+    /// the picture said otherwise.
+    func releaseKey() {
+        guard !acceptsKeyboard, isKeyWindow else { return }
+        orderOut(nil)
+        orderFrontRegardless()
     }
 
     override var canBecomeKey: Bool { acceptsKeyboard }
