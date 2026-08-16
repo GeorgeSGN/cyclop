@@ -156,3 +156,27 @@ struct RevealEye: View {
         .help(hidden ? Text(localized("Show")) : Text(localized("Hide")))
     }
 }
+
+/// Turns covering on or off for one section, from inside the tab it covers.
+///
+/// Inside the tab rather than in the panel header: that strip lies directly on
+/// the menu bar, where utilities like Ice watch for clicks with a global
+/// monitor and would fire on anything interactive placed there.
+struct PrivacySwitch: View {
+    @ObservedObject var privacy: PrivacyMode
+    let section: PrivacyMode.Section
+
+    private var covering: Bool { privacy.covers(section) }
+
+    var body: some View {
+        Button {
+            privacy.setCovering(section, !covering)
+        } label: {
+            Image(systemName: covering ? "eye.slash.fill" : "eye")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(covering ? Color.white.opacity(0.8) : Theme.secondary)
+        }
+        .buttonStyle(.plain)
+        .help(covering ? localized("Show") : localized("Hide"))
+    }
+}

@@ -6,8 +6,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var controller: NotchController?
     private var statusItem: NSStatusItem?
     private var clearVaultItem: NSMenuItem?
-    private var privacyAllItem: NSMenuItem?
-    private var privacySectionItems: [PrivacyMode.Section: NSMenuItem] = [:]
     private var sweepTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -62,16 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // clear item below is disabled exactly when the folder is empty.
         menu.autoenablesItems = false
         menu.delegate = self
-        menu.addItem(withTitle: "Cyclop \(Bundle.main.shortVersion)", action: nil, keyEquivalent: "")
-        menu.addItem(.separator())
 
-        let toggle = NSMenuItem(
-            title: localized("Open Panel"),
-            action: #selector(togglePanel),
-            keyEquivalent: ""
-        )
-        toggle.target = self
-        menu.addItem(toggle)
 
         let login = NSMenuItem(
             title: localized("Launch at Login"),
@@ -100,13 +89,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         saveFiles.state = NotchViewModel.saveClipboardFilesEnabled ? .on : .off
         menu.addItem(saveFiles)
 
-        let openFolder = NSMenuItem(
-            title: localized("Show Screenshots Folder"),
-            action: #selector(revealScreenshots),
-            keyEquivalent: ""
-        )
-        openFolder.target = self
-        menu.addItem(openFolder)
 
         // Deliberately wider than the two-week sweep: this one empties the whole
         // folder, the sweep takes only files this app wrote. That is not an
@@ -131,33 +113,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         openSnippets.target = self
         menu.addItem(openSnippets)
 
-        // A submenu rather than a plain switch, because the tabs hold different
-        // things and not everyone wants all of them covered. "All" comes first
-        // and is what most people will ever touch.
-        let privacy = NSMenuItem(title: localized("Hide Contents"), action: nil, keyEquivalent: "")
-        let submenu = NSMenu()
-        submenu.autoenablesItems = false
-
-        let all = NSMenuItem(title: localized("All"), action: #selector(togglePrivacyAll), keyEquivalent: "")
-        all.target = self
-        submenu.addItem(all)
-        privacyAllItem = all
-        submenu.addItem(.separator())
-
-        for section in PrivacyMode.Section.allCases {
-            let sectionItem = NSMenuItem(
-                title: section.title,
-                action: #selector(togglePrivacySection(_:)),
-                keyEquivalent: ""
-            )
-            sectionItem.target = self
-            sectionItem.representedObject = section.rawValue
-            submenu.addItem(sectionItem)
-            privacySectionItems[section] = sectionItem
-        }
-
-        privacy.submenu = submenu
-        menu.addItem(privacy)
 
         menu.addItem(.separator())
         let quit = NSMenuItem(title: localized("Quit"), action: #selector(quit), keyEquivalent: "q")
@@ -168,14 +123,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem = item
     }
 
-    @objc private func togglePanel() {
-        controller?.toggle()
-    }
 
     /// The size is measured when the menu opens, not kept fresh in between: a
     /// folder nobody is looking at deserves no bookkeeping.
     func menuWillOpen(_ menu: NSMenu) {
-        refreshPrivacyItems()
         guard let clearVaultItem else { return }
         let usage = ScreenshotVault.usage()
         if usage.files == 0 {
@@ -188,29 +139,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    @objc private func togglePrivacyAll(_ sender: NSMenuItem) {
-        guard let privacy = controller?.privacy else { return }
-        // Anything short of everything means "turn the rest on too"; only a
-        // full house turns them all off.
-        privacy.setCoveringAll(!privacy.coversAll)
-        refreshPrivacyItems()
-    }
 
-    @objc private func togglePrivacySection(_ sender: NSMenuItem) {
-        guard let privacy = controller?.privacy,
-              let raw = sender.representedObject as? String,
-              let section = PrivacyMode.Section(rawValue: raw) else { return }
-        privacy.setCovering(section, !privacy.covers(section))
-        refreshPrivacyItems()
-    }
 
-    private func refreshPrivacyItems() {
-        guard let privacy = controller?.privacy else { return }
-        privacyAllItem?.state = privacy.coversAll ? .on : .off
-        for (section, item) in privacySectionItems {
-            item.state = privacy.covers(section) ? .on : .off
-        }
-    }
 
     @objc private func clearScreenshots() {
         ScreenshotVault.clear()
@@ -238,9 +168,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         sender.state = NotchViewModel.saveClipboardFilesEnabled ? .on : .off
     }
 
-    @objc private func revealScreenshots() {
-        ScreenshotVault.reveal()
-    }
 
     @objc private func revealSnippets() {
         SnippetStore.reveal()
