@@ -41,6 +41,11 @@ final class NotchViewModel: ObservableObject {
     @Published var isDropTargeted = false
     @Published var tab: Tab = .shelf {
         didSet {
+            // Nothing on the shelf is looked at on disk until the shelf is
+            // actually shown — see `ShelfStore.refreshFromDisk`. Reading at
+            // launch meant a permission prompt for a file dragged in from
+            // Downloads months ago, arriving with the panel not even open.
+            if tab == .shelf { shelf.refreshFromDisk() }
             // The snippets file is edited from outside the app, so it is read
             // on the way in rather than held from launch.
             if tab == .snippets { snippets.reload() }

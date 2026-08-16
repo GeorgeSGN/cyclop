@@ -28,31 +28,76 @@ final class ShelfStore: ObservableObject {
     @Published private(set) var selection: Set<UUID> = []
 
     private let defaultsKey = "shelf.urls"
-    /// Generous, because saved screenshots accumulate here. Cards past the limit
-    /// leave the shelf, and their files stay on disk — where, if they are ones
-    /// this app saved, the two-week sweep in `ScreenshotVault` eventually takes
-    /// them. Files dragged onto the shelf from elsewhere are never touched.
+    /// Generous, because saved screenshots accumulate here and nothing is
+    /// deleted behind the user's back. Cards past the limit leave the shelf,
+    /// but their files stay in the folder.
     private let limit = 60
-    /// Ceiling on the picture data a copy may carry: past it the file still goes
-    /// to the pasteboard, just without its bytes read into memory.
-    ///
-    /// Guards one case only — a single very large picture. A multi-card copy
-    /// carries no picture data at all (see `copy(_ urls:)`), so the sixty-card
-    /// selection this once protected against cannot reach here any more.
+    /// Ceiling on the picture data a copy may carry: past it the file still
+    /// goes to the pasteboard, just without its bytes read into memory.
     private let imageDataBudget = 64 * 1024 * 1024
 
+    /// Rebuilds the cards from the stored paths without reading a single file.
+    ///
+    /// Nothing here touches the disk, and that is the whole point. Since
+    /// Catalina, the first look at anything inside Desktop, Documents or
+    /// Downloads raises a system permission prompt — for `stat` as much as for
+    /// a read — and this used to run at launch, for every card, whether or not
+    /// anyone was going to open the shelf. One file dragged in from Downloads
+    /// months ago meant a dialog on every cold start, arriving with no visible
+    /// cause: the panel was not even open. Cyclop promises no permissions until
+    /// the calendar is opened, and this quietly broke that promise.
+    ///
+    /// So the icon comes from the file *name* — the extension is enough to
+    /// name a type, and a type is enough to draw an icon — and whether the file
+    /// is still there is not asked until someone looks at the shelf.
     func load() {
+        // Card ids are minted per instance, so a reload orphans any selection:
+        // the ids it holds now name nothing. Kept, they showed as a phantom
+        // "Selected: N" in the footer with no card marked (#10).
+        selection.removeAll()
         let paths = UserDefaults.standard.stringArray(forKey: defaultsKey) ?? []
         items = paths
             .map(URL.init(fileURLWithPath:))
-            .filter { FileManager.default.fileExists(atPath: $0.path) }
-            .map { ShelfItem(url: $0, icon: NSWorkspace.shared.icon(forFile: $0.path)) }
+            .map { ShelfItem(url: $0, icon: Self.icon(forName: $0)) }
+    }
+
+    /// An icon for a path, derived from its extension alone.
+    private static func icon(forName url: URL) -> NSImage {
+        let type = UTType(filenameExtension: url.pathExtension) ?? .data
+        return NSWorkspace.shared.icon(for: type)
+    }
+
+    /// Called when the shelf comes into view, and only then.
+    ///
+    /// This is where the disk is finally touched: missing files leave, real
+    /// icons and previews arrive. If a permission prompt is coming, it comes
+    /// here — with the shelf on screen and the cards in front of the person
+    /// being asked, which is the difference between a question and an
+    /// interruption.
+    func refreshFromDisk() {
+        guard !items.isEmpty else { return }
+        let gone = Set(items.filter { Self.isGone($0.url) }.map(\.id))
+        if !gone.isEmpty {
+            items.removeAll { gone.contains($0.id) }
+            selection.subtract(gone)
+            persist()
+        }
         items.forEach(loadThumbnail)
-        // Files that went away are dropped from the shelf here, and the record
-        // has to follow — otherwise their paths sit in the defaults for good,
-        // filtered out on every launch and never removed. Files copied from
-        // elsewhere make that pile grow: they are the ones that get moved.
-        if items.count != paths.count { persist() }
+    }
+
+    /// Whether the file is actually gone, as opposed to merely out of reach.
+    ///
+    /// `fileExists` answers false to both, and the difference matters: a card
+    /// whose file was deleted should leave the shelf, while one the app was
+    /// just refused access to should stay exactly where it is. Treating them
+    /// alike meant a single "Don't Allow" silently emptied the shelf of
+    /// everything kept in Downloads, with the files still sitting there.
+    private static func isGone(_ url: URL) -> Bool {
+        do {
+            return try !url.checkResourceIsReachable()
+        } catch let error as NSError {
+            return error.code == NSFileReadNoSuchFileError
+        }
     }
 
     func add(_ urls: [URL]) {
@@ -110,13 +155,10 @@ final class ShelfStore: ObservableObject {
     /// dims the window underneath for as long as it does.
     ///
     /// Mirroring, precisely: a ⌘-click that drops one card of three rewrites the
-    /// pasteboard with the remaining two, because a selection on screen that
-    /// disagrees with what would be pasted is worse than either. Only clearing
-    /// the selection entirely leaves the pasteboard as it was — an empty write
-    /// would take back what was copied and hand over nothing.
-    ///
-    /// A double click passes through here first, with `clickCount == 1`, so
-    /// opening a card copies it on the way.
+    /// pasteboard with the remaining two. Only clearing the selection entirely
+    /// leaves it alone — an empty write would take back what was copied and hand
+    /// over nothing. A double click passes through here first, with
+    /// `clickCount == 1`, so opening a card copies it on the way.
     func select(_ item: ShelfItem, modifiers: NSEvent.ModifierFlags) {
         if modifiers.contains(.command) || modifiers.contains(.shift) {
             if selection.contains(item.id) {
@@ -153,56 +195,47 @@ final class ShelfStore: ObservableObject {
         copy([item.url])
     }
 
-    /// The current selection, as one pasteboard write. Empty does nothing at
-    /// all — an empty write would clear whatever the pasteboard already held.
+    /// The current selection, as one pasteboard write.
     func copySelection() {
         copy(items.filter { selection.contains($0.id) }.map(\.url))
     }
 
-    /// One pasteboard item per file, each carrying the file reference, plus the
-    /// paths as plain text.
+    /// One pasteboard item per file, plus the paths as plain text.
     ///
     /// Picture bytes go along only when a single card was copied. A reader that
-    /// finds an image in the pasteboard takes it and looks no further — Claude
-    /// Code in a terminal does exactly that — so attaching a picture to a copy of
-    /// several files is what turns "four screenshots" into "the first
-    /// screenshot". Left without one, the same reader falls through to the text
-    /// below and gets every path; whoever enumerates the items, like Finder or a
-    /// messenger, was taking all the files either way.
+    /// finds an image takes it and looks no further — a terminal reading the
+    /// clipboard does exactly that — so attaching a picture to a copy of several
+    /// files turns "four screenshots" into "the first screenshot". Left without
+    /// one, the same reader falls through to the text and gets every path.
     private func copy(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
-        let carriesPicture = urls.count == 1
-        let items = urls.map { url -> NSPasteboardItem in
-            let item = NSPasteboardItem()
-            item.setString(url.absoluteString, forType: .fileURL)
-            if carriesPicture, let picture = image(of: url) {
-                item.setData(picture.data, forType: picture.type)
-            }
-            return item
-        }
-
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.writeObjects(items)
-        // Both land on the first item, which is why they are set after the write.
-        // The marker tells ClipboardStore the change came from us, so a copied
-        // screenshot is not saved to disk a second time.
+        // The files go on first and everything below is added to the item the
+        // first of them creates. Order is the whole of it: `setData` always
+        // writes to the first item, `writeObjects` appends new ones — so marking
+        // first put the marker on one item and the file on another, and one card
+        // arrived as two objects.
+        pasteboard.writeObjects(urls.map { $0 as NSURL })
+        // Tells ClipboardStore this change came from us, so a copied screenshot
+        // is not saved to disk a second time.
         pasteboard.setData(Data(), forType: .cyclopInternal)
         pasteboard.setString(urls.map(\.path).joined(separator: "\n"), forType: .string)
+
+        guard urls.count == 1, let url = urls.first, let picture = image(of: url) else { return }
+        pasteboard.setData(picture.data, forType: picture.type)
     }
 
-    /// Image bytes for the pasteboard, or nothing when the file is not a picture
-    /// or is too big to be worth carrying.
+    /// Image bytes for the pasteboard, declared as what they actually are.
     private func image(of url: URL) -> (data: Data, type: NSPasteboard.PasteboardType)? {
         guard let type = UTType(filenameExtension: url.pathExtension),
               type.conforms(to: .image),
               let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
-              size <= imageDataBudget else { return nil }
-        // PNG goes as itself; anything else is re-encoded, because handing JPEG
-        // bytes over under the TIFF type is a picture nobody can decode.
-        if type == .png, let data = try? Data(contentsOf: url) { return (data, .png) }
-        guard let tiff = NSImage(contentsOf: url)?.tiffRepresentation else { return nil }
-        return (tiff, .tiff)
+              size <= imageDataBudget,
+              let data = try? Data(contentsOf: url) else { return nil }
+        // Declared as what the bytes are, not renamed to TIFF: consumers that
+        // trust the declared type would save a "TIFF" with JPEG inside (#9).
+        return (data, NSPasteboard.PasteboardType(type.identifier))
     }
 
     func open(_ item: ShelfItem) {
