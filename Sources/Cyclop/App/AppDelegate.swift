@@ -6,6 +6,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var controller: NotchController?
     private var statusItem: NSStatusItem?
     private var clearVaultItem: NSMenuItem?
+    private var privacyAllItem: NSMenuItem?
+    private var privacySectionItems: [PrivacyMode.Section: NSMenuItem] = [:]
     private var sweepTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -129,6 +131,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         openSnippets.target = self
         menu.addItem(openSnippets)
 
+        // A submenu rather than a plain switch, because the tabs hold different
+        // things and not everyone wants all of them covered. "All" comes first
+        // and is what most people will ever touch.
+        let privacy = NSMenuItem(title: localized("Hide Contents"), action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+
+        let all = NSMenuItem(title: localized("All"), action: #selector(togglePrivacyAll), keyEquivalent: "")
+        all.target = self
+        submenu.addItem(all)
+        privacyAllItem = all
+        submenu.addItem(.separator())
+
+        for section in PrivacyMode.Section.allCases {
+            let sectionItem = NSMenuItem(
+                title: section.title,
+                action: #selector(togglePrivacySection(_:)),
+                keyEquivalent: ""
+            )
+            sectionItem.target = self
+            sectionItem.representedObject = section.rawValue
+            submenu.addItem(sectionItem)
+            privacySectionItems[section] = sectionItem
+        }
+
+        privacy.submenu = submenu
+        menu.addItem(privacy)
+
         menu.addItem(.separator())
         let quit = NSMenuItem(title: localized("Quit"), action: #selector(quit), keyEquivalent: "q")
         quit.target = self
@@ -145,6 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// The size is measured when the menu opens, not kept fresh in between: a
     /// folder nobody is looking at deserves no bookkeeping.
     func menuWillOpen(_ menu: NSMenu) {
+        refreshPrivacyItems()
         guard let clearVaultItem else { return }
         let usage = ScreenshotVault.usage()
         if usage.files == 0 {
@@ -154,6 +185,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let size = ByteCountFormatter.string(fromByteCount: usage.bytes, countStyle: .file)
             clearVaultItem.title = localized("Clear Screenshots Folder (%@)", size)
             clearVaultItem.isEnabled = true
+        }
+    }
+
+    @objc private func togglePrivacyAll(_ sender: NSMenuItem) {
+        guard let privacy = controller?.privacy else { return }
+        // Anything short of everything means "turn the rest on too"; only a
+        // full house turns them all off.
+        privacy.setCoveringAll(!privacy.coversAll)
+        refreshPrivacyItems()
+    }
+
+    @objc private func togglePrivacySection(_ sender: NSMenuItem) {
+        guard let privacy = controller?.privacy,
+              let raw = sender.representedObject as? String,
+              let section = PrivacyMode.Section(rawValue: raw) else { return }
+        privacy.setCovering(section, !privacy.covers(section))
+        refreshPrivacyItems()
+    }
+
+    private func refreshPrivacyItems() {
+        guard let privacy = controller?.privacy else { return }
+        privacyAllItem?.state = privacy.coversAll ? .on : .off
+        for (section, item) in privacySectionItems {
+            item.state = privacy.covers(section) ? .on : .off
         }
     }
 

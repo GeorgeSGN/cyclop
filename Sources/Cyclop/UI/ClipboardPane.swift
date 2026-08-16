@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ClipboardPane: View {
     @ObservedObject var clipboard: ClipboardStore
+    @ObservedObject var privacy: PrivacyMode
 
     var body: some View {
         VStack(spacing: 0) {
@@ -14,7 +15,7 @@ struct ClipboardPane: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 3) {
                         ForEach(clipboard.items) { item in
-                            ClipRow(item: item, clipboard: clipboard)
+                            ClipRow(item: item, clipboard: clipboard, privacy: privacy)
                         }
                     }
                     .padding(.vertical, 4)
@@ -40,9 +41,11 @@ struct ClipboardPane: View {
 private struct ClipRow: View {
     let item: ClipItem
     @ObservedObject var clipboard: ClipboardStore
+    @ObservedObject var privacy: PrivacyMode
     @State private var hovering = false
     @State private var justCopied = false
 
+    private var hidden: Bool { privacy.hides(.clipboard, item.id.uuidString) }
 
     var body: some View {
         HStack(spacing: 9) {
@@ -50,13 +53,16 @@ private struct ClipRow: View {
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(justCopied ? Color.green : Theme.tertiary)
                 .frame(width: 14)
-            Text(item.preview.replacingOccurrences(of: "\n", with: " "))
-                .font(.system(size: 11))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .truncationMode(.middle)
+            SpoilerText(
+                text: item.preview.replacingOccurrences(of: "\n", with: " "),
+                hidden: hidden,
+                seed: UInt64(bitPattern: Int64(item.id.uuidString.hashValue))
+            )
             Spacer(minLength: 6)
             if hovering {
+                if privacy.covers(.clipboard) {
+                    RevealEye(hidden: hidden) { privacy.toggle(item.id.uuidString) }
+                }
                 Button { clipboard.remove(item) } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .semibold))
@@ -75,8 +81,7 @@ private struct ClipRow: View {
         .onHover { hovering = $0 }
         .onTapGesture {
             clipboard.copy(item)
-            justCopied = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { justCopied = false }
+            flash($justCopied)
         }
         .animation(Theme.contentAnimation, value: hovering)
         .animation(Theme.contentAnimation, value: justCopied)

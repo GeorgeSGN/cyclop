@@ -301,9 +301,18 @@ final class NotchController {
         }
     }
 
+    /// What the menu bar switches. Handed out rather than wrapped: the menu
+    /// reads the sections and writes them one at a time, and a controller
+    /// method per section would be methods that only forward.
+    var privacy: PrivacyMode? { viewModel?.privacy }
+
     /// The visual half of closing, one pass after the keyboard was let go.
     private func collapse() {
         guard let vm = viewModel, vm.isOpen else { return }
+        // Whatever was uncovered by hand goes back under cover with the panel.
+        // The next hover is the one nobody planned, and it must not open onto
+        // a row somebody revealed ten minutes ago.
+        vm.privacy.coverEverything()
         withAnimation(Theme.openAnimation) { vm.isOpen = false }
 
         // The keyboard goes back only now, a pass after the fold has started.

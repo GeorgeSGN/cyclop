@@ -62,3 +62,8 @@
    в своём порядке. */
 "Screenshot" = "Снимок";
 "yyyy-MM-dd 'at' HH.mm.ss" = "yyyy-MM-dd 'в' HH.mm.ss";
+"Hide Contents" = "Скрывать содержимое";
+"All" = "Всё";
+"Hidden" = "Скрыто";
+"Hide" = "Скрыть";
+"Show" = "Показать";

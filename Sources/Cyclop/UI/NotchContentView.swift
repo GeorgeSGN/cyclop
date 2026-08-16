@@ -130,9 +130,9 @@ struct NotchContentView: View {
         case .shelf:
             ShelfPane(shelf: vm.shelf, isTargeted: vm.isDropTargeted)
         case .clipboard:
-            ClipboardPane(clipboard: vm.clipboard)
+            ClipboardPane(clipboard: vm.clipboard, privacy: vm.privacy)
         case .snippets:
-            SnippetsPane(snippets: vm.snippets, wantsKeyboard: $vm.wantsKeyboard)
+            SnippetsPane(snippets: vm.snippets, privacy: vm.privacy, wantsKeyboard: $vm.wantsKeyboard)
         case .translate:
             TranslatePane(translator: vm.translator, wantsKeyboard: $vm.wantsKeyboard)
         case .utilities:

@@ -76,6 +76,7 @@ final class NotchViewModel: ObservableObject {
     /// drop the tap and the cover while the cloth was still on the keys. The
     /// lock outlives rebuilds because it is a system-wide mode, not a view.
     let keyboardLock: KeyboardLock
+    let privacy = PrivacyMode()
 
     private var cancellables = Set<AnyCancellable>()
 

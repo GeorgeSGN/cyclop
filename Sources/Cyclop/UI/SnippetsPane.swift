@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SnippetsPane: View {
     @ObservedObject var snippets: SnippetStore
+    @ObservedObject var privacy: PrivacyMode
     /// Whether the panel holds the keyboard, so the fields can follow it.
     @Binding var wantsKeyboard: Bool
 
@@ -17,6 +18,7 @@ struct SnippetsPane: View {
     var body: some View {
         VStack(spacing: 6) {
             if isAdding { editor } else { search }
+            if snippets.fileBroken { brokenNotice }
             list
         }
         .padding(.top, 2)
@@ -75,6 +77,24 @@ struct SnippetsPane: View {
         // actually on screen, so arriving on the tab and coming back from the
         // editor both land the same way.
         .onAppear { if wantsKeyboard { focused = .search } }
+    }
+
+    /// The refusal to write over a broken file (#7) is only honest if it is
+    /// said out loud: a log line is where refusals go to be unread.
+    private var brokenNotice: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(Color.yellow.opacity(0.85))
+            Text("snippets.json is broken — click to open; nothing is overwritten")
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture { SnippetStore.reveal() }
     }
 
     // MARK: - Adding
@@ -200,7 +220,7 @@ struct SnippetsPane: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 3) {
                     ForEach(snippets.filtered) { item in
-                        SnippetRow(item: item, snippets: snippets)
+                        SnippetRow(item: item, snippets: snippets, privacy: privacy)
                     }
                 }
                 .padding(.bottom, 2)
@@ -213,8 +233,11 @@ struct SnippetsPane: View {
 private struct SnippetRow: View {
     let item: Snippet
     @ObservedObject var snippets: SnippetStore
+    @ObservedObject var privacy: PrivacyMode
     @State private var hovering = false
     @State private var justCopied = false
+
+    private var hidden: Bool { privacy.hides(.snippets, "snippet.\(item.id)") }
 
     var body: some View {
         HStack(spacing: 9) {
@@ -222,6 +245,11 @@ private struct SnippetRow: View {
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(justCopied ? Color.green : Theme.tertiary)
                 .frame(width: 14)
+            // The name stays legible while the value is covered: the row has to
+            // say what it copies, or a list of covered rows is a list of
+            // identical rows. An unnamed snippet shows its value as its name,
+            // so covering the value covers the whole row — which is right,
+            // since there is nothing else in it.
             if !item.label.isEmpty {
                 Text(item.label)
                     .font(.system(size: 11, weight: .medium))
@@ -229,15 +257,19 @@ private struct SnippetRow: View {
                     .lineLimit(1)
                     .layoutPriority(1)
             }
-            Text(item.text.replacingOccurrences(of: "\n", with: " "))
-                .font(.system(size: 11))
-                .foregroundStyle(item.label.isEmpty ? .white : Theme.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
+            SpoilerText(
+                text: item.text.replacingOccurrences(of: "\n", with: " "),
+                hidden: hidden,
+                color: item.label.isEmpty ? .white : Theme.secondary,
+                seed: UInt64(bitPattern: Int64(item.id.hashValue))
+            )
             Spacer(minLength: 6)
             // Only under the pointer: a row of crosses would compete with the
             // snippets themselves for a glance.
             if hovering {
+                if privacy.covers(.snippets) {
+                    RevealEye(hidden: hidden) { privacy.toggle("snippet.\(item.id)") }
+                }
                 Button { snippets.remove(item) } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .semibold))
@@ -257,11 +289,10 @@ private struct SnippetRow: View {
         .onHover { hovering = $0 }
         .onTapGesture {
             snippets.copy(item)
-            justCopied = true
             // Emptying the search lets go of the panel: nothing is being typed
             // any more, so nothing needs to hold it open.
             snippets.query = ""
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { justCopied = false }
+            flash($justCopied)
         }
         .animation(Theme.contentAnimation, value: hovering)
         .animation(Theme.contentAnimation, value: justCopied)
