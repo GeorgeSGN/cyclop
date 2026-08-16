@@ -47,6 +47,16 @@ final class ClipboardStore: ObservableObject {
     /// would otherwise be encoded in full and then thrown away.
     var wantsImages: () -> Bool = { true }
 
+    /// Raised for files copied in Finder — every one of them, not just the first.
+    /// The history keeps one entry per copy, because it records what the
+    /// pasteboard held; the shelf wants the files themselves.
+    var onFiles: (([URL]) -> Void)?
+
+    /// Whether copied files are worth putting on the shelf. Copying a file is a
+    /// far more casual act than taking a screenshot — often just a step on the
+    /// way to pasting it somewhere — so this one is easy to switch off.
+    var wantsFiles: () -> Bool = { true }
+
     private var timer: Timer?
     private var lastChangeCount = NSPasteboard.general.changeCount
     private let limit = 40
@@ -108,10 +118,13 @@ final class ClipboardStore: ObservableObject {
         guard pasteboard.data(forType: .cyclopInternal) == nil else { return }
 
         // A copied file arrives as a URL, not as image data, so URLs win first.
+        // This is also what separates a copied file from copied text without any
+        // guessing: text never arrives as a file URL.
         let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
         if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: options) as? [URL],
-           let url = urls.first {
-            record(ClipItem(payload: .file(url), date: Date()))
+           let first = urls.first {
+            record(ClipItem(payload: .file(first), date: Date()))
+            if wantsFiles() { onFiles?(urls) }
             return
         }
 

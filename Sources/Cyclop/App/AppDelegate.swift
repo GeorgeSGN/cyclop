@@ -89,6 +89,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         saveShots.state = NotchViewModel.saveClipboardImagesEnabled ? .on : .off
         menu.addItem(saveShots)
 
+        let saveFiles = NSMenuItem(
+            title: localized("Add Copied Files to Shelf"),
+            action: #selector(toggleSaveClipboardFiles),
+            keyEquivalent: ""
+        )
+        saveFiles.target = self
+        saveFiles.state = NotchViewModel.saveClipboardFilesEnabled ? .on : .off
+        menu.addItem(saveFiles)
+
         let openFolder = NSMenuItem(
             title: localized("Show Screenshots Folder"),
             action: #selector(revealScreenshots),
@@ -164,6 +173,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             forKey: NotchViewModel.saveClipboardImagesKey
         )
         sender.state = NotchViewModel.saveClipboardImagesEnabled ? .on : .off
+    }
+
+    @objc private func toggleSaveClipboardFiles(_ sender: NSMenuItem) {
+        UserDefaults.standard.set(
+            !NotchViewModel.saveClipboardFilesEnabled,
+            forKey: NotchViewModel.saveClipboardFilesKey
+        )
+        sender.state = NotchViewModel.saveClipboardFilesEnabled ? .on : .off
     }
 
     @objc private func revealScreenshots() {

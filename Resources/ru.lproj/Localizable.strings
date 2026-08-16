@@ -12,6 +12,7 @@
 "Open Panel" = "Открыть панель";
 "Launch at Login" = "Запускать при входе";
 "Save Clipboard Screenshots" = "Сохранять скриншоты из буфера";
+"Add Copied Files to Shelf" = "Класть скопированные файлы на полку";
 "Show Screenshots Folder" = "Показать папку скриншотов";
 "Clear Screenshots Folder" = "Очистить папку снимков";
 "Clear Screenshots Folder (%@)" = "Очистить папку снимков (%@)";

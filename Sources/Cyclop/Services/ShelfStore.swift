@@ -48,6 +48,11 @@ final class ShelfStore: ObservableObject {
             .filter { FileManager.default.fileExists(atPath: $0.path) }
             .map { ShelfItem(url: $0, icon: NSWorkspace.shared.icon(forFile: $0.path)) }
         items.forEach(loadThumbnail)
+        // Files that went away are dropped from the shelf here, and the record
+        // has to follow — otherwise their paths sit in the defaults for good,
+        // filtered out on every launch and never removed. Files copied from
+        // elsewhere make that pile grow: they are the ones that get moved.
+        if items.count != paths.count { persist() }
     }
 
     func add(_ urls: [URL]) {

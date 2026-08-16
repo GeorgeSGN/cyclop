@@ -128,6 +128,18 @@ final class NotchViewModel: ObservableObject {
         return defaults.bool(forKey: saveClipboardImagesKey)
     }
 
+    /// Off switch for copied files reaching the shelf. Separate from the one
+    /// above because the two are not the same act: a screenshot in the clipboard
+    /// exists nowhere else and is lost on the next copy, while a copied file is
+    /// usually already on its way somewhere and merely passing through.
+    static let saveClipboardFilesKey = "saveClipboardFiles"
+
+    static var saveClipboardFilesEnabled: Bool {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: saveClipboardFilesKey) != nil else { return true }
+        return defaults.bool(forKey: saveClipboardFilesKey)
+    }
+
     /// Hover and click both land here. A tab that types takes the keyboard
     /// either way: showing a field one cannot type into is worse than briefly
     /// dimming the caret of the window underneath, and the dwell threshold on
@@ -154,6 +166,21 @@ final class NotchViewModel: ObservableObject {
             guard let self, let url = ScreenshotVault.save(png) else { return }
             self.shelf.add([url])
             self.tab = .shelf
+        }
+
+        // Files copied in Finder land here too — the shelf references them where
+        // they lie, it does not copy them, so moving the original away simply
+        // takes the card with it.
+        //
+        // The tab is only switched while the panel is folded. A screenshot is
+        // worth showing at once; a copied file is usually a step towards pasting
+        // it somewhere, and yanking the visible tab out from under someone
+        // mid-translation for that would be rude.
+        clipboard.wantsFiles = { Self.saveClipboardFilesEnabled }
+        clipboard.onFiles = { [weak self] urls in
+            guard let self else { return }
+            self.shelf.add(urls)
+            if !self.isOpen { self.tab = .shelf }
         }
         clipboard.start()
     }
