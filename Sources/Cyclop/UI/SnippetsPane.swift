@@ -225,7 +225,7 @@ struct SnippetsPane: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 3) {
                     ForEach(snippets.filtered) { item in
-                        SnippetRow(item: item, snippets: snippets, privacy: privacy)
+                        SnippetRow(item: item, snippets: snippets, privacy: privacy, wantsKeyboard: $wantsKeyboard)
                     }
                 }
                 .padding(.bottom, 2)
@@ -239,10 +239,21 @@ private struct SnippetRow: View {
     let item: Snippet
     @ObservedObject var snippets: SnippetStore
     @ObservedObject var privacy: PrivacyMode
+    /// Editing needs the keyboard, and the panel only takes it when asked.
+    @Binding var wantsKeyboard: Bool
     @State private var hovering = false
     @State private var justCopied = false
+    /// Set by a double click. While it is on, the row shows two fields instead
+    /// of its text, and the value is shown even under cover — editing what one
+    /// cannot read is not editing.
+    @State private var editing = false
+    @State private var draftLabel = ""
+    @State private var draftText = ""
+    @FocusState private var focus: Field?
 
-    private var hidden: Bool { privacy.hides(.snippets, "snippet.\(item.id)") }
+    private enum Field { case label, text }
+
+    private var hidden: Bool { privacy.hides(.snippets, "snippet.\(item.id)") && !editing }
 
     var body: some View {
         HStack(spacing: 9) {
@@ -255,23 +266,41 @@ private struct SnippetRow: View {
             // identical rows. An unnamed snippet shows its value as its name,
             // so covering the value covers the whole row — which is right,
             // since there is nothing else in it.
-            if !item.label.isEmpty {
-                Text(item.label)
+            if editing {
+                TextField(localized("Name"), text: $draftLabel)
+                    .textFieldStyle(.plain)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .layoutPriority(1)
+                    .tint(Theme.secondary)
+                    .frame(maxWidth: 110)
+                    .focused($focus, equals: .label)
+                    .onSubmit { commit() }
+                TextField(localized("Text"), text: $draftText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white)
+                    .tint(Theme.secondary)
+                    .focused($focus, equals: .text)
+                    .onSubmit { commit() }
+            } else {
+                if !item.label.isEmpty {
+                    Text(item.label)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .layoutPriority(1)
+                }
+                SpoilerText(
+                    text: item.text.replacingOccurrences(of: "\n", with: " "),
+                    hidden: hidden,
+                    color: item.label.isEmpty ? .white : Theme.secondary,
+                    seed: UInt64(bitPattern: Int64(item.id.hashValue))
+                )
             }
-            SpoilerText(
-                text: item.text.replacingOccurrences(of: "\n", with: " "),
-                hidden: hidden,
-                color: item.label.isEmpty ? .white : Theme.secondary,
-                seed: UInt64(bitPattern: Int64(item.id.hashValue))
-            )
             Spacer(minLength: 6)
             // Only under the pointer: a row of crosses would compete with the
             // snippets themselves for a glance.
-            if hovering {
+            if hovering, !editing {
                 if privacy.covers(.snippets) {
                     RevealEye(hidden: hidden) { privacy.toggle("snippet.\(item.id)") }
                 }
@@ -293,6 +322,11 @@ private struct SnippetRow: View {
         )
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
+        // Double first: SwiftUI hands a tap to the last matching gesture, and
+        // with the single one declared first a double click would only ever
+        // copy. The first click of a double still copies — harmless, and the
+        // alternative is delaying every single click to see if a second lands.
+        .onTapGesture(count: 2) { beginEditing() }
         .onTapGesture {
             snippets.copy(item)
             // Emptying the search lets go of the panel: nothing is being typed
@@ -302,5 +336,30 @@ private struct SnippetRow: View {
         }
         .animation(Theme.contentAnimation, value: hovering)
         .animation(Theme.contentAnimation, value: justCopied)
+        .animation(Theme.contentAnimation, value: editing)
+        .onExitCommand { editing = false }
+        // Losing the focus saves: clicking away from a row one has just edited
+        // is not a way of throwing the edit out — Esc is.
+        .onChange(of: focus) { _, now in
+            if editing, now == nil { commit() }
+        }
+        // The panel folds by itself when the pointer leaves, and the row goes
+        // with it. Whatever was typed by then has to survive that.
+        .onDisappear { if editing { commit() } }
+    }
+
+    private func beginEditing() {
+        draftLabel = item.label
+        draftText = item.text
+        editing = true
+        focus = item.label.isEmpty ? .text : .label
+        wantsKeyboard = true
+    }
+
+    private func commit() {
+        guard editing else { return }
+        editing = false
+        focus = nil
+        snippets.update(item, label: draftLabel, text: draftText)
     }
 }
