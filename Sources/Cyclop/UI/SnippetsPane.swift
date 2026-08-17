@@ -228,6 +228,7 @@ struct SnippetsPane: View {
                         SnippetRow(item: item, snippets: snippets, privacy: privacy, wantsKeyboard: $wantsKeyboard)
                     }
                 }
+                .animation(Theme.contentAnimation, value: snippets.items)
                 .padding(.bottom, 2)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -254,34 +255,73 @@ private struct SnippetRow: View {
     private enum Field { case label, text }
 
     private var hidden: Bool { privacy.hides(.snippets, "snippet.\(item.id)") && !editing }
+    /// Position in the stored list, not in the filtered one: moving is an edit
+    /// of the file's order, and the filter is only a way of looking at it.
+    private var index: Int { snippets.items.firstIndex(where: { $0.id == item.id }) ?? 0 }
+    private var isLast: Bool { index >= snippets.items.count - 1 }
 
     var body: some View {
-        HStack(spacing: 9) {
-            Image(systemName: justCopied ? "checkmark" : item.symbol)
+        HStack(spacing: editing ? 6 : 9) {
+            if !editing {
+                Image(systemName: justCopied ? "checkmark" : item.symbol)
                 .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(justCopied ? Color.green : Theme.tertiary)
-                .frame(width: 14)
+                    .foregroundStyle(justCopied ? Color.green : Theme.tertiary)
+                    .frame(width: 14)
+            }
             // The name stays legible while the value is covered: the row has to
             // say what it copies, or a list of covered rows is a list of
             // identical rows. An unnamed snippet shows its value as its name,
             // so covering the value covers the whole row — which is right,
             // since there is nothing else in it.
             if editing {
+                // The same two surfaces as the add form above: a row being
+                // edited and a row being created are the same act, and looking
+                // alike is the whole of saying so. Bare fields inside the row
+                // read as text that had lost its alignment.
                 TextField(localized("Name"), text: $draftLabel)
                     .textFieldStyle(.plain)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.white)
                     .tint(Theme.secondary)
-                    .frame(maxWidth: 110)
+                    .padding(.horizontal, 7)
+                    .frame(width: 104, height: 20)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(Theme.surface)
+                    )
                     .focused($focus, equals: .label)
                     .onSubmit { commit() }
+
                 TextField(localized("Text"), text: $draftText)
                     .textFieldStyle(.plain)
                     .font(.system(size: 11))
                     .foregroundStyle(.white)
                     .tint(Theme.secondary)
+                    .padding(.horizontal, 7)
+                    .frame(height: 20)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(Theme.surface)
+                    )
                     .focused($focus, equals: .text)
                     .onSubmit { commit() }
+
+                Button { commit() } label: {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(draftText.isEmpty ? Theme.tertiary : Color.green)
+                }
+                .buttonStyle(.plain)
+                .pointerStyle(.default)
+                .disabled(draftText.isEmpty)
+
+                Button { cancel() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Theme.secondary)
+                }
+                .buttonStyle(.plain)
+                .pointerStyle(.default)
             } else {
                 if !item.label.isEmpty {
                     Text(item.label)
@@ -304,6 +344,29 @@ private struct SnippetRow: View {
                 if privacy.covers(.snippets) {
                     RevealEye(hidden: hidden) { privacy.toggle("snippet.\(item.id)") }
                 }
+                // Order is priority: the one reached for most often belongs on
+                // top. Arrows rather than dragging — the list is a few rows
+                // long, and a drag here brought more edge cases than movement:
+                // where a row lands under a live filter, what happens past the
+                // ends, and how it coexists with the taps that copy and edit.
+                Button { snippets.move(item, to: index - 1) } label: {
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(index == 0 ? Theme.tertiary : Theme.secondary)
+                }
+                .buttonStyle(.plain)
+                .pointerStyle(.default)
+                .disabled(index == 0)
+
+                Button { snippets.move(item, to: index + 1) } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(isLast ? Theme.tertiary : Theme.secondary)
+                }
+                .buttonStyle(.plain)
+                .pointerStyle(.default)
+                .disabled(isLast)
+
                 Button { snippets.remove(item) } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .semibold))
@@ -314,11 +377,11 @@ private struct SnippetRow: View {
                 .help(localized("Delete"))
             }
         }
-        .padding(.horizontal, 9)
-        .frame(height: 26)
+        .padding(.horizontal, editing ? 6 : 9)
+        .frame(height: editing ? 28 : 26)
         .background(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(hovering ? Theme.surfaceHover : Theme.surface)
+                .fill(editing || hovering ? Theme.surfaceHover : Theme.surface)
         )
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
@@ -337,7 +400,7 @@ private struct SnippetRow: View {
         .animation(Theme.contentAnimation, value: hovering)
         .animation(Theme.contentAnimation, value: justCopied)
         .animation(Theme.contentAnimation, value: editing)
-        .onExitCommand { editing = false }
+        .onExitCommand { cancel() }
         // Losing the focus saves: clicking away from a row one has just edited
         // is not a way of throwing the edit out — Esc is.
         .onChange(of: focus) { _, now in
@@ -354,6 +417,11 @@ private struct SnippetRow: View {
         editing = true
         focus = item.label.isEmpty ? .text : .label
         wantsKeyboard = true
+    }
+
+    private func cancel() {
+        editing = false
+        focus = nil
     }
 
     private func commit() {

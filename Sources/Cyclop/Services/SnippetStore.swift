@@ -141,6 +141,23 @@ final class SnippetStore: ObservableObject {
         persist()
     }
 
+    /// Moves a snippet to another position and writes the new order.
+    ///
+    /// The order is the file's order, so dragging a row is a real edit and not
+    /// a view-only arrangement — the one people reach for is meant to end up on
+    /// top and stay there.
+    ///
+    /// Unlike `add` and `update`, this does not re-read the file first: a drag
+    /// is a continuous gesture, and re-reading mid-gesture would swap the list
+    /// out from under the row being dragged.
+    func move(_ snippet: Snippet, to index: Int) {
+        guard let current = items.firstIndex(where: { $0.id == snippet.id }) else { return }
+        let target = max(0, min(index, items.count - 1))
+        guard target != current else { return }
+        items.insert(items.remove(at: current), at: target)
+        persist()
+    }
+
     /// Edits a snippet in place, keeping its position in the list.
     ///
     /// Not `remove` plus `add`: identity here is the name, so renaming makes a
