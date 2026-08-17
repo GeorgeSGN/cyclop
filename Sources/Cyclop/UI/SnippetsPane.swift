@@ -316,6 +316,17 @@ private struct SnippetRow: View {
     private var hidden: Bool { privacy.hides(.snippets, key) && !editing }
     /// Position in the stored list, not in the filtered one: moving is an edit
     /// of the file's order, and the filter is only a way of looking at it.
+    /// A row on its own sits on a lit surface against the black panel. A row
+    /// inside a group sits on that same surface, so lighting it again would
+    /// make two barely different greys — the group and its contents blurred
+    /// into one patch. Inside, the rows are sunk instead.
+    private var fill: Color {
+        guard group != nil else {
+            return editing || hovering ? Theme.surfaceHover : Theme.surface
+        }
+        return editing || hovering ? Color.black.opacity(0.18) : Color.black.opacity(0.32)
+    }
+
     private var siblings: [Snippet] { group?.items ?? snippets.items }
     private var index: Int { siblings.firstIndex(where: { $0.id == item.id }) ?? 0 }
     private var isLast: Bool { index >= siblings.count - 1 }
@@ -441,7 +452,7 @@ private struct SnippetRow: View {
         .frame(height: editing ? 28 : 26)
         .background(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(editing || hovering ? Theme.surfaceHover : Theme.surface)
+                .fill(fill)
         )
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
@@ -562,7 +573,7 @@ private struct SnippetGroup: View {
         .padding(4)
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(Theme.surface.opacity(0.5))
+                .fill(Theme.surface)
         )
         .onHover { hovering = $0 }
         .animation(Theme.contentAnimation, value: collapsed)
