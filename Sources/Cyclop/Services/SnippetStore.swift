@@ -246,11 +246,15 @@ final class SnippetStore: ObservableObject {
     func rename(_ group: Snippet, to label: String) {
         let name = label.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name != group.label else { return }
+        // The namesake goes first, and only then is the place looked up: an
+        // index taken before the removal points into a list that has since
+        // shifted, and the write landed on the neighbour — renaming `target` to
+        // `prod` in [prod, target, x, y] overwrote `x` and left `target` as it
+        // was. Reported in review of #50.
+        items.removeAll { $0.id == "group\u{0}\(name)" }
         guard let index = items.firstIndex(where: { $0.id == group.id }),
               let rows = items[index].items else { return }
-        items.removeAll { $0.id == "group\u{0}\(name)" }
-        let at = min(index, items.count - 1)
-        items[at] = Snippet(group: name, items: rows)
+        items[index] = Snippet(group: name, items: rows)
         persist()
     }
 
