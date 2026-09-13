@@ -38,6 +38,9 @@ enum ScreenshotVault {
         }
         do {
             try png.write(to: url, options: .atomic)
+            // Written before returning: the sweep takes only marked files, so an
+            // unmarked one would live in the folder forever.
+            mark(url)
             return url
         } catch {
             NSLog("Cyclop: failed to save image: \(error.localizedDescription)")
@@ -74,4 +77,91 @@ enum ScreenshotVault {
             try? fm.trashItem(at: url, resultingItemURL: nil)
         }
     }
+
+    /// How long a screenshot is kept before the sweep takes it.
+    static let retention: TimeInterval = 14 * 24 * 60 * 60
+
+    /// Marker `save` puts on the files it writes, and the sweep's only evidence
+    /// of authorship.
+    ///
+    /// The name cannot serve as that evidence. macOS calls its own screenshots
+    /// `Screenshot <date> at <time>.png`, which is the format used here almost
+    /// word for word, and in Russian its `Снимок экрана …` starts with the same
+    /// word as ours. Point the system's screenshot folder here — one setting,
+    /// and the folder is literally named for snapshots — and a sweep that trusts
+    /// names would delete them.
+    private static let ownerAttribute = "com.cyclop.saved"
+
+    private static func mark(_ url: URL) {
+        url.withUnsafeFileSystemRepresentation { path in
+            guard let path else { return }
+            if setxattr(path, ownerAttribute, nil, 0, 0, 0) != 0 {
+                NSLog("Cyclop: could not mark \(url.lastPathComponent) as ours")
+            }
+        }
+    }
+
+    /// Whether the sweep is allowed to take this file.
+    ///
+    /// The folder is not private: the app sends the user into it from its own
+    /// menu, so an edited screenshot or a folder of exports sitting there is a
+    /// thing that happens, and `removeItem` on a directory takes everything
+    /// inside it. Age is no evidence either — a file copied in Finder keeps the
+    /// modification date it had at the source, so something placed here a minute
+    /// ago can already look two weeks old.
+    ///
+    /// Files written before the marker existed carry none, so the sweep leaves
+    /// them alone forever. That is the safe side of the mistake, and the menu
+    /// item clears them by hand.
+    private static func isOurs(_ url: URL) -> Bool {
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
+        guard values?.isDirectory != true else { return false }
+        return url.withUnsafeFileSystemRepresentation { path in
+            guard let path else { return false }
+            return getxattr(path, ownerAttribute, nil, 0, 0, 0) >= 0
+        }
+    }
+
+    /// Deletes screenshots past `retention`, for good rather than to the Trash:
+    /// what lands here is a throwaway copy of something that was on the
+    /// clipboard, and a Trash slowly filling with those is the same problem one
+    /// folder further along. Returns how many went, so the caller can refresh
+    /// the shelf only when something actually changed.
+    ///
+    /// Only files this app wrote are ever taken — see `isOurs`. Cards on the
+    /// shelf are no exception among those: two weeks means two weeks, or the
+    /// shelf quietly becomes the permanent storage this sweep exists to prevent.
+    static func prune(now: Date = Date()) -> Int {
+        let fm = FileManager.default
+        guard let urls = try? fm.contentsOfDirectory(
+            at: folder,
+            includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return 0 }
+
+        var removed = 0
+        for url in urls {
+            guard isOurs(url) else { continue }
+            guard let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate,
+                now.timeIntervalSince(modified) > retention else { continue }
+            do {
+                try fm.removeItem(at: url)
+                removed += 1
+            } catch {
+                NSLog("Cyclop: failed to sweep \(url.lastPathComponent): \(error.localizedDescription)")
+            }
+        }
+        return removed
+    }
+
+    /// Empties the folder — all of it, not only what this app wrote, and to the
+    /// Trash rather than for good.
+    ///
+    /// Wider than `prune` on purpose. A menu item named "clear the folder" that
+    /// left half the folder behind would be the puzzling one, and the marker it
+    /// would have to filter by is invisible, so there would be no way to see why.
+    /// A press is also a decision, which is what earns it the Trash; the sweep
+    /// runs on a schedule nobody asked about, which is why it is narrow and
+
 }

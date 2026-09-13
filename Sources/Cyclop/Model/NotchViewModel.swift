@@ -243,6 +243,7 @@ final class NotchViewModel: ObservableObject {
     let keyboardLock = KeyboardLock()
 
     private var cancellables = Set<AnyCancellable>()
+    private var sweepTimer: Timer?
 
     init() {
         self.media = MediaController()
@@ -301,7 +302,41 @@ final class NotchViewModel: ObservableObject {
         return defaults.bool(forKey: saveClipboardImagesKey)
     }
 
+    /// Off switch for copied files reaching the shelf. Separate from the one
+    /// above because the two are not the same act: a screenshot in the clipboard
+    /// exists nowhere else and is lost on the next copy, while a copied file is
+    /// usually already on its way somewhere and merely passing through.
+    static let saveClipboardFilesKey = "saveClipboardFiles"
+
+    static var saveClipboardFilesEnabled: Bool {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: saveClipboardFilesKey) != nil else { return true }
+        return defaults.bool(forKey: saveClipboardFilesKey)
+    }
+
+    /// Screenshots this app saved are swept after two weeks — see
+    /// `ScreenshotVault.prune`. At launch and once a day after: the daily beat
+    /// is for the Mac that is never restarted, where launch alone would run the
+    /// sweep once and then never again.
+    private func startSweep() {
+        sweep()
+        let timer = Timer(timeInterval: 24 * 60 * 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.sweep() }
+        }
+        timer.tolerance = 60 * 60
+        RunLoop.main.add(timer, forMode: .common)
+        sweepTimer = timer
+    }
+
+    private func sweep() {
+        guard ScreenshotVault.prune() > 0 else { return }
+        // Cards pointing at the files that just went have to go with them.
+        shelf.load()
+        shelf.refreshFromDisk()
+    }
+
     func start() {
+        startSweep()
         shelf.load()
         snippets.reload()
 
@@ -313,6 +348,17 @@ final class NotchViewModel: ObservableObject {
         // here after the fact: turned off, a copied picture used to be encoded
         // to PNG in full just to be dropped on this doorstep — pure heat on
         // exactly the machines whose owners turned the feature off.
+        // Files copied in Finder land on the shelf too — the shelf references
+        // them where they lie, so moving the original away takes the card with
+        // it. The tab is only switched while the panel is folded: a screenshot
+        // is worth showing at once, a copied file is usually a step towards
+        // pasting it somewhere.
+        clipboard.wantsFiles = { Self.saveClipboardFilesEnabled }
+        clipboard.onFiles = { [weak self] urls in
+            guard let self else { return }
+            self.shelf.add(urls)
+            if !self.isPanelActive { self.tab = .shelf }
+        }
         clipboard.wantsImages = { Self.saveClipboardImagesEnabled }
         clipboard.onImage = { [weak self] png in
             guard let self, let url = ScreenshotVault.save(png) else { return }

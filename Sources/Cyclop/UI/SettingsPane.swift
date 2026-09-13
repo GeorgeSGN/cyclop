@@ -14,6 +14,7 @@ struct SettingsPane: View {
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var menuBarIconVisible = AppDelegate.isMenuBarIconVisible
     @State private var saveClipboardImages = NotchViewModel.saveClipboardImagesEnabled
+    @State private var saveClipboardFiles = NotchViewModel.saveClipboardFilesEnabled
     @State private var allDisplays = NotchGeometry.showsOnAllDisplays
     @State private var watchScreenshotFolder = false
     @State private var screenshotUsage: (files: Int, bytes: Int64) = (0, 0)
@@ -62,6 +63,11 @@ struct SettingsPane: View {
                         symbol: "photo.on.rectangle",
                         title: localized("Save Clipboard Screenshots"),
                         isOn: saveClipboardImagesBinding
+                    )
+                    toggleRow(
+                        symbol: "doc.on.clipboard",
+                        title: localized("Add Copied Files to Shelf"),
+                        isOn: saveClipboardFilesBinding
                     )
                     toggleRow(
                         symbol: "eye",
@@ -115,6 +121,7 @@ struct SettingsPane: View {
             // below it — re-read for the same reason as the rest of this block.
             menuBarIconVisible = AppDelegate.isMenuBarIconVisible
             saveClipboardImages = NotchViewModel.saveClipboardImagesEnabled
+            saveClipboardFiles = NotchViewModel.saveClipboardFilesEnabled
             allDisplays = NotchGeometry.showsOnAllDisplays
             watchScreenshotFolder = screenshots.isEnabled
             refreshUsage()
@@ -159,6 +166,16 @@ struct SettingsPane: View {
         Binding(
             get: { vm.isVisible(tab) },
             set: { wants in vm.setVisible(tab, wants) }
+        )
+    }
+
+    private var saveClipboardFilesBinding: Binding<Bool> {
+        Binding(
+            get: { saveClipboardFiles },
+            set: { wants in
+                UserDefaults.standard.set(wants, forKey: NotchViewModel.saveClipboardFilesKey)
+                saveClipboardFiles = wants
+            }
         )
     }
 
