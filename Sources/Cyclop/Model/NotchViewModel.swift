@@ -43,6 +43,16 @@ final class NotchViewModel: ObservableObject {
             self == .translate || self == .currency || self == .snippets || self == .notes
         }
 
+        /// Tabs whose content needs more than the standard 208 pt.
+        ///
+        /// The teleprompter, which has to fit a paragraph to be read at a
+        /// glance rather than to be scrolled; and settings, whose sections
+        /// are lists — which tabs are on the panel, the screenshots, the
+        /// privacy sections — where a list of ten switches in 208 pt is a
+        /// list of three and a scroll, and settings is the one tab somebody
+        /// opens specifically to go through the whole of it.
+        var wantsTallBody: Bool { self == .teleprompter || self == .settings }
+
         /// Every tab can be taken off the rail except the one the switches
         /// live on: with Settings gone there would be no way back.
         var canHide: Bool { self != .settings }
