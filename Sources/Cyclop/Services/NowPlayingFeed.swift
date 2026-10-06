@@ -56,9 +56,6 @@ final class NowPlayingFeed {
     /// Whether the caller was told the route is closed and has not yet been
     /// told otherwise.
     private var reportedUnavailable = false
-    /// Set before we terminate the helper ourselves, so the exit that follows
-    /// is not counted as a crash and does not schedule a second relaunch.
-    private var expectingExit = false
 
     /// Delays before the helper is started again after it exited, in seconds.
     /// The first two are quick: a helper that died on one bad frame is usually
@@ -92,7 +89,6 @@ final class NowPlayingFeed {
 
     private func terminateHelper() {
         guard let process else { return }
-        expectingExit = true
         input = nil
         process.terminate()
         self.process = nil
@@ -152,8 +148,9 @@ final class NowPlayingFeed {
             Task { @MainActor in self?.consume(chunk) }
         }
 
-        task.terminationHandler = { @Sendable [weak self] _ in
-            Task { @MainActor in self?.handleTermination() }
+        task.terminationHandler = { @Sendable [weak self] finished in
+            let pid = finished.processIdentifier
+            Task { @MainActor in self?.handleTermination(of: pid) }
         }
 
         do {
@@ -170,14 +167,14 @@ final class NowPlayingFeed {
         input = commands.fileHandleForWriting
     }
 
-    private func handleTermination() {
-        guard !stopped else { return }
-        process = nil
+    /// Only the exit of the helper we are running now counts. One we
+    /// terminated ourselves was let go of before it exited, and so was one
+    /// replaced by `stop()` and `start()` in quick succession — its exit can
+    /// land after the new helper is up, and must not take that one's place.
+    private func handleTermination(of pid: Int32) {
+        guard !stopped, let process, process.processIdentifier == pid else { return }
+        self.process = nil
         input = nil
-        if expectingExit {
-            expectingExit = false
-            return
-        }
         failures += 1
         let delay = Self.relaunchDelays[min(failures, Self.relaunchDelays.count) - 1]
         // Three straight crashes and the caller is told, so it can script the
