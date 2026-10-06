@@ -45,6 +45,16 @@ final class NotchViewModel: ObservableObject {
             self == .translate || self == .currency || self == .snippets || self == .notes
         }
 
+        /// Tabs whose content needs more than the standard 208 pt.
+        ///
+        /// The teleprompter, which has to fit a paragraph to be read at a
+        /// glance rather than to be scrolled; and settings, whose sections
+        /// are lists — which tabs are on the panel, the screenshots, the
+        /// privacy sections — where a list of ten switches in 208 pt is a
+        /// list of three and a scroll, and settings is the one tab somebody
+        /// opens specifically to go through the whole of it.
+        var wantsTallBody: Bool { self == .teleprompter || self == .settings }
+
         /// Every tab can be taken off the rail except the one the switches
         /// live on: with Settings gone there would be no way back.
         var canHide: Bool { self != .settings }
@@ -85,12 +95,12 @@ final class NotchViewModel: ObservableObject {
     ///
     /// Kept as the set of what is off rather than what is on, so a tab added
     /// in a later version shows up for everyone instead of arriving hidden.
-    static let hiddenTabsKey = "hiddenTabs"
-
+    /// Persisted in `config.json` (#67), alongside the rest of what makes
+    /// sense on another Mac.
     @Published private(set) var hiddenTabs: Set<Tab> = NotchViewModel.loadHiddenTabs()
 
     private static func loadHiddenTabs() -> Set<Tab> {
-        let raw = UserDefaults.standard.stringArray(forKey: hiddenTabsKey) ?? []
+        let raw = ConfigStore.shared.hiddenTabs
         return Set(raw.compactMap(Tab.init(rawValue:))).filter(\.canHide)
     }
 
@@ -116,7 +126,7 @@ final class NotchViewModel: ObservableObject {
             // means, the teleprompter's suspend included.
             if tab == target { tab = firstVisibleTab }
         }
-        UserDefaults.standard.set(hiddenTabs.map(\.rawValue).sorted(), forKey: Self.hiddenTabsKey)
+        ConfigStore.shared.hiddenTabs = hiddenTabs.map(\.rawValue).sorted()
     }
 
     /// What a tab keeps running while nobody is looking at it. Only a few have
@@ -291,14 +301,12 @@ final class NotchViewModel: ObservableObject {
         }
     }
 
-    /// Off switch for people who copy images all day and do not want them kept.
-    static let saveClipboardImagesKey = "saveClipboardImages"
-
-    /// Defaults to on: the feature is the reason the folder exists.
+    /// Off switch for people who copy images all day and do not want them
+    /// kept. Persisted in `config.json` (#67) — see
+    /// `ConfigStore.saveClipboardImages` for the default.
     static var saveClipboardImagesEnabled: Bool {
-        let defaults = UserDefaults.standard
-        guard defaults.object(forKey: saveClipboardImagesKey) != nil else { return true }
-        return defaults.bool(forKey: saveClipboardImagesKey)
+        get { ConfigStore.shared.saveClipboardImages }
+        set { ConfigStore.shared.saveClipboardImages = newValue }
     }
 
     func start() {
