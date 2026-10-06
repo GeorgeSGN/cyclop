@@ -336,6 +336,10 @@ final class KeyboardLock: ObservableObject {
             lastInterruption = (.secureInput, now)
             return
         }
+        // Not covered: Accessibility revoked mid-wipe. The system tears the tap
+        // down, keys go straight through, and the cover stays up — the same lie
+        // as above, for another reason. Nothing here notices; only the
+        // auto-release below ends it.
 
         if let holdStartedAt, let code = heldReleaseKey {
             let held = now.timeIntervalSince(holdStartedAt)
