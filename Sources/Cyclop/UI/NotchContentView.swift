@@ -121,11 +121,22 @@ struct NotchContentView: View {
 
     // MARK: - Body
 
+    /// Tabs that stand on the right, away from the ones used while working on
+    /// something else.
+    private static let asideTabs: [NotchViewModel.Tab] = [.currency, .settings]
+
     private var content: some View {
         HStack(spacing: 14) {
-            Rail(vm: vm, panel: panel, tabs: vm.leftRail)
+            // The tabs share one rail: with half of them switched off, two
+            // rails each keep a handful and both float in the middle of their
+            // own empty column. Together they fill one.
+            //
+            // The right side keeps what is reached for on its own account
+            // rather than in the middle of something: the converter and the
+            // settings.
+            Rail(vm: vm, panel: panel, tabs: vm.leftRail + vm.rightRail.filter { !Self.asideTabs.contains($0) })
             panes
-            Rail(vm: vm, panel: panel, tabs: vm.rightRail)
+            Rail(vm: vm, panel: panel, tabs: Self.asideTabs.filter(vm.isVisible))
         }
         .padding(.horizontal, 14)
         // The body's height is measured from this same number, so the two
@@ -240,7 +251,7 @@ private struct Rail: View {
                 } label: {
                     Image(systemName: tab.symbol)
                         .font(.system(size: 12, weight: .medium))
-                        .frame(width: 30, height: panel.geometry.railIconHeight)
+                        .frame(width: 30, height: panel.geometry.railIconHeight(icons: tabs.count))
                         .background(
                             RoundedRectangle(cornerRadius: 7, style: .continuous)
                                 .fill(fill(for: tab))

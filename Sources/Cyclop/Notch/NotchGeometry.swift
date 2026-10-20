@@ -72,8 +72,13 @@ struct NotchGeometry {
     /// Rounded down rather than to the nearest point: a rail that asks for
     /// more than it is given should visibly yield, not overflow by a
     /// fraction that clips it.
-    var railIconHeight: CGFloat {
-        let icons = CGFloat(NotchViewModel.Tab.leftRail.count)
+    /// Height of one icon when the rail carries `count` of them.
+    ///
+    /// Counted from what is actually on the rail, not from every tab the app
+    /// has: with half of them switched off, dividing the height by the full
+    /// list left icons a third of their size with the rail mostly empty.
+    func railIconHeight(icons count: Int) -> CGFloat {
+        let icons = CGFloat(max(1, count))
         let available = expandedSize.height - notchSize.height - Self.bodyBottomPadding
         let ceiling = (available - (icons - 1) * Self.railSpacing) / icons
         return min(24, ceiling).rounded(.down)
